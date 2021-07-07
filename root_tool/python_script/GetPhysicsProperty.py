@@ -56,5 +56,5 @@ class PDGMassMap:
         else:
             return name_return
 
-def GetKineticE(momentum_square:np.ndarray, mass:np.ndarray):
+def GetKineticE(momentum_square, mass):
     return np.sqrt(momentum_square+mass**2)-mass

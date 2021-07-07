@@ -5,9 +5,13 @@
 # @File: usgcnnTools.py
 import matplotlib.pylab as plt
 import numpy as np
+from copy import copy
 import ROOT
 from scipy.interpolate import RegularGridInterpolator
 from scipy.interpolate import griddata
+import  sys
+sys.path.append("/afs/ihep.ac.cn/users/l/luoxj/root_tool/")
+from python_script.ClusteringTools import SinusoidaProjection_xyz, SinusoidaProjection_theta_phi
 import pickle
 plt.style.use("/afs/ihep.ac.cn/users/l/luoxj/Style/Paper.mplstyle")
 
@@ -29,7 +33,7 @@ class PMTIDMap():
                 float(pmt_instance[4]), float(pmt_instance[5]))
         self.maxpmtid = len(self.pmtmap)
         # self.c_in_LS = 2.99792458e2/1.578
-        self.c_in_LS = 2.99792458e2
+        self.c_in_LS = 2.99792458e2/1.48
 
 
     def IdToPos(self, pmtid):
@@ -108,7 +112,7 @@ class PMTIDMap():
         if pmtid > self.maxpmtid:
             print('Wrong PMT ID')
             return (0, 0)
-        (pmtid, x, y, z, theta, phi) = self.pmtmap[str(pmtid)]
+        (pmtid, x, y, z, theta, phi) = self.pmtmap[pmtid]
         xbin = int(phi * 128. / 360)
         ybin = int(theta * 128. / 180)
         # print(pmtid, x, y, z, theta, phi, xbin, ybin)
@@ -118,11 +122,14 @@ class PMTIDMap():
         if pmtid > self.maxpmtid:
             print('Wrong PMT ID')
             return (0, 0)
-        (pmtid, x, y, z, theta, phi) = self.pmtmap[str(pmtid)]
+        (pmtid, x, y, z, theta, phi) = self.pmtmap[pmtid]
         # Using xbin and ybin, PMTs can be mapped into a image, which like a oval
         xbin = np.where(self.thetas == theta)[0]
-        # xbin = np.where(self.thetaphi_dict[str(theta)] == phi)[0] + 112 - int(len(self.thetaphi_dict[str(theta)])/2)# When the theta is close to pi/2, we got the max length of phis
         ybin = np.where(self.phis == phi)[0]
+
+        # print(theta, phi)
+        # xbin = np.deg2rad(phi) * np.cos(np.deg2rad(theta))
+        # ybin = np.deg2rad(theta)
         # print((xbin, ybin))
         return (xbin, ybin)
 
@@ -231,35 +238,61 @@ def Expand2dPlanarBySphere(thetas, phis, sig_r2:np.ndarray, pmtmap:PMTIDMap):
     return (thetas_expand, phis_expand, sig_r2_expand)
 
 
-def interp_pmt2mesh(sig_r2, thetas, phis, V, pmtmap, method="linear", do_calcgrid=False, dtype=np.float32):
-    ele, azi = xyz2latlong(V)
-    check_interp_range:bool = False
+def interp_pmt2mesh(sig_r2, thetas, phis, V, pmtmap, method="linear", do_calcgrid=False, dtype=np.float32,
+                    title="hittime",sinusoida_projection=True):
     plot_planar_afterInterp = False
+    check_interp_range: bool = False
+    phis[phis>np.pi] = phis[phis>np.pi] - 2*np.pi
+    if sinusoida_projection:
+        x_projection_V, y_projection_V = SinusoidaProjection_xyz(x=V[:, 0], y=V[:,1], z=V[:,2])
+    else:
+        y_projection_V, x_projection_V = xyz2latlong(V)  # theta and phi
+        thetas = thetas-np.pi/2
+        thetas_raw = copy(thetas)
+        phis_raw = copy(phis)
+        sig_r2_raw = copy(sig_r2)
+        # (thetas, phis, sig_r2) = Expand2dPlanarBySphere(thetas, phis, sig_r2, pmtmap)
+        # sig_r2 = np.concatenate((sig_r2, sig_r2), axis=1) #aims to add sig_r2 images one column
     if check_interp_range:
         print("###########Checking whether raw data range is matched with the interplotation range############")
-        print(f"ele range: {np.min(ele)}--{np.max(ele)}")
-        print(f"azi range: {np.min(azi)}--{np.max(azi)}")
+        print(f"ele range: {np.min(x_projection_V)}--{np.max(x_projection_V)}")
+        print(f"azi range: {np.min(y_projection_V)}--{np.max(y_projection_V)}")
         print(f"thetas -- max: {np.max(thetas)}, min: {np.min(thetas)}")
         print(f"phis   -- max: {np.max(phis)}, min: {np.min(phis)}")
-        s2 = np.array([ele, azi]).T
+        s2 = np.array([x_projection_V, y_projection_V]).T
         print("s2:   ", s2.shape)
         print("sig_r2:   ", sig_r2.shape)
         print("(theta, phis):  ", (thetas[:10], phis[:10]))
         print("###############################################################################################")
-    (thetas, phis, sig_r2) = Expand2dPlanarBySphere(thetas, phis, sig_r2, pmtmap)
-    # sig_r2 = np.concatenate((sig_r2, sig_r2[:, 0:1]), axis=1) #aims to add sig_r2 images one column
+
+    indices = (sig_r2 != 0.)
     if do_calcgrid:
         intp = RegularGridInterpolator((thetas, phis), sig_r2, method=method)
         sig_s2 = intp(s2).astype(dtype)
     else:
-        indices = (sig_r2 != 0.)
-        sig_s2 = griddata((thetas[indices], phis[indices]), sig_r2[indices], (ele, azi), method=method, fill_value=0.)
+        if sinusoida_projection:
+            x_projection, y_projection = SinusoidaProjection_theta_phi(thetas, phis)
+            sig_s2 = griddata((x_projection, y_projection), sig_r2, (x_projection_V, y_projection_V),fill_value=0., method=method)
+        else:
+            sig_s2 = griddata((phis, thetas), sig_r2, (x_projection_V, y_projection_V), fill_value=0.,method=method)
     # print("sig_s2 : ", sig_s2, "shape: ", sig_s2.shape)  # sig_s2 :  (642,)
     if plot_planar_afterInterp:
-        fig_planar = plt.figure("planar after interp")
-        ax = fig_planar.add_subplot(111)
-        img = ax.scatter(azi, ele, c=sig_s2, cmap=plt.hot(), s=1)
-        fig_planar.colorbar(img)
+        fig_planar = plt.figure(f"planar after interp {title}")
+        ax = fig_planar.add_subplot(121)
+        indices_interp = (sig_s2 != 0)
+        img = ax.scatter( x_projection_V[indices_interp],y_projection_V[indices_interp], c=sig_s2[indices_interp], cmap=plt.cm.hot, s=1)
+        fig_planar.colorbar(img, orientation="horizontal")
+        plt.title("Interpolation")
+        plt.xlabel("phi")
+        plt.ylabel("theta")
+
+        ax_2 = fig_planar.add_subplot(122)
+        if sinusoida_projection:
+            img_raw = ax_2.scatter( x_projection[indices], y_projection[indices], c=sig_r2[indices], cmap=plt.cm.hot, s=1)
+        else:
+            img_raw = ax_2.scatter( phis_raw,thetas_raw, c=sig_r2_raw, cmap=plt.cm.hot, s=1)
+        fig_planar.colorbar(img_raw, orientation="horizontal")
+        plt.title("Raw Distribution")
         plt.xlabel("phi")
         plt.ylabel("theta")
         # plt.show()
@@ -267,8 +300,8 @@ def interp_pmt2mesh(sig_r2, thetas, phis, V, pmtmap, method="linear", do_calcgri
     return sig_s2
 
 def GetOneEventImage(pmtids:np.ndarray, hittime:np.ndarray, npes:np.ndarray, pmtmap:PMTIDMap, V,
-                     do_calcgrid:bool=False, max_n_points_grid:bool=True, subtract_TOF=False,
-                     event_vertex:np.ndarray=(0,0,0)):
+                     do_calcgrid:bool=False, max_n_points_grid:bool=True, filter_near_zero=False,
+                     cut_threshold=5):
     if do_calcgrid == False:
         event2dimg = np.zeros((2, len(pmtmap.thetas)), dtype=np.float32)
     else:
@@ -307,10 +340,36 @@ def GetOneEventImage(pmtids:np.ndarray, hittime:np.ndarray, npes:np.ndarray, pmt
                 event2dimg[1, xbin, ybin] = hittime[j]-delta_t
             else:
                 event2dimg[1, xbin, ybin] = min(hittime[j]-delta_t, event2dimg[1, xbin, ybin])
-    try:
-        event2dimg_interp[0] = interp_pmt2mesh(event2dimg[0], pmtmap.thetas, pmtmap.phis, V, pmtmap, method="linear")
-        event2dimg_interp[1] = interp_pmt2mesh(event2dimg[1], pmtmap.thetas, pmtmap.phis, V, pmtmap, method="nearest")
-    except:
-        print("event2dimg is empty!!!! Continue")
-
+    # try:
+    event2dimg_interp[0] = interp_pmt2mesh(event2dimg[0], pmtmap.thetas, pmtmap.phis, V, pmtmap, method="nearest", title="hittime")
+    event2dimg_interp[1] = interp_pmt2mesh(event2dimg[1], pmtmap.thetas, pmtmap.phis, V, pmtmap, method="nearest", title="equen")
+        # event2dimg_interp[0] = interp_pmt2mesh(event2dimg[0], pmtmap.thetas, pmtmap.phis, V, pmtmap, method="nearest", title="hittime")
+        # event2dimg_interp[1] = interp_pmt2mesh(event2dimg[1], pmtmap.thetas, pmtmap.phis, V, pmtmap, method="nearest", title="equen")
+    # except:
+    #     print("event2dimg is empty!!!! Continue")
+    if filter_near_zero:
+        event2dimg_interp[0][event2dimg_interp[0]< cut_threshold] = 0
+        event2dimg_interp[1][event2dimg_interp[1] < cut_threshold] = 0
     return (event2dimg, event2dimg_interp)
+def GetRelativeDistribution(eventimg:np.ndarray, x_base:np.ndarray, y_base:np.ndarray, z_base:np.ndarray, evt_vertex:np.ndarray ):
+    """
+
+    :param eventimg: the hit information of event
+    :param x_base: same shape with eventimg, it is the base x
+    :param y_base: same shape with eventimg, it is the base y
+    :param z_base: same shape with eventimg, it is the base z
+    :param evt_vertex: vertex of event
+    :return:
+    """
+    index_non_zeros = (eventimg!=0)
+    R = ( x_base[0]**2 + y_base[0]**2 + z_base[0]**2)**0.5
+    x_relative, y_relative, z_relative = x_base[index_non_zeros]-evt_vertex[0], y_base[index_non_zeros]-evt_vertex[1] , z_base[index_non_zeros]-evt_vertex[2]
+    theta_relative = np.arctan2((x_relative**2+y_relative**2)**0.5, z_relative)
+    phi_relative = np.arctan2(y_relative, x_relative)
+
+    x_relative_sphere = np.sin(theta_relative)*np.cos(phi_relative)*R
+    y_relative_sphere = np.sin(theta_relative)*np.sin(phi_relative)*R
+    z_relative_sphere = np.cos(theta_relative)*R
+
+    return (eventimg[index_non_zeros], x_relative_sphere, y_relative_sphere, z_relative_sphere)
+
