@@ -5,6 +5,7 @@
 # @File: FitWithComponent.py
 import matplotlib.pylab as plt
 from torch import nn, optim
+import argparse
 import numpy as np
 import uproot as up
 import glob
@@ -18,8 +19,9 @@ sys.path.append("/afs/ihep.ac.cn/users/l/luoxj/root_tool/python_script/")
 from copy import copy
 from torch.utils.data import DataLoader,Dataset
 from CNNDataset import CNNDataset
-from CNN_GetGammaRatio import CNN1D, CNN1D_2
+from CNN_GetGammaRatio import CNN1D, CNN1D_2, Net, LinearNet
 import os
+import random
 plt.style.use("/afs/ihep.ac.cn/users/l/luoxj/Style/Paper.mplstyle")
 
 device = 'cuda'
@@ -98,9 +100,20 @@ class FitWithComponent:
         self.norm_pdf_by_area = False
         self.check_adjust_bins = False
 
-        # self.model = CNN1D()
-        self.model = CNN1D_2()
+        self.model_mode = args.model
+        self.model_label = f"_{self.model_mode}"
+
+        if self.model_mode == 0:
+            self.model = CNN1D()
+        elif self.model_mode == 1:
+            self.model = CNN1D_2()
+        elif self.model_mode == 2:
+            self.model = Net()
+        elif self.model_mode == 3:
+            self.model = LinearNet()
+
         self.training_with_charge = True
+        self.save_ML_output = True
 
         self.option_h_time = "" # Whether use Truth
         if use_truth_time:
@@ -544,8 +557,22 @@ class FitWithComponent:
                 m_best = m
         return m_best
 
-    def SplitSamples(self, ratio_train:float=0.7):
+    def UniformLeptonRatioDistribution(self):
         self.evts_to_fit["ratio_lepton"][self.evts_to_fit["ratio_lepton"]<0] = 0.
+        h_lepton_ratio, h_edges = np.histogram(self.evts_to_fit["ratio_lepton"], bins=50)
+        total_n_samples_to_select = h_lepton_ratio[0]
+        n_samples_to_select = np.mean(h_lepton_ratio[1:])
+        ratio_abort = 1 - n_samples_to_select/total_n_samples_to_select
+        index_need_to_select = np.where(self.evts_to_fit["ratio_lepton"]<=h_edges[1])[0]
+        index_abort = random.sample(list(index_need_to_select), int(len(index_need_to_select)*ratio_abort))
+        index_remain = np.array([True]*len(self.evts_to_fit["ratio_lepton"]))
+        index_remain[index_abort] = False
+        for key in self.evts_to_fit.keys():
+            if key == "edep":
+                continue
+            self.evts_to_fit[key] = np.array(self.evts_to_fit[key])[index_remain]
+
+    def SplitSamples(self, ratio_train:float=0.7):
         self.total_length_evts = len(self.evts_to_fit[list(self.evts_to_fit.keys())[0]])
         for key in self.evts_to_fit.keys():
             self.evts_to_fit_train[key] = self.evts_to_fit[key][:int(ratio_train*self.total_length_evts)]
@@ -558,45 +585,51 @@ class FitWithComponent:
         else:
             self.trainset = CNNDataset(self.evts_to_fit_train["h_time_norm"], self.evts_to_fit_train["ratio_lepton"])
             self.testset = CNNDataset(self.evts_to_fit_test["h_time_norm"], self.evts_to_fit_test["ratio_lepton"])
-        self.trainloader = DataLoader(self.trainset, batch_size=100, shuffle=True)
-        self.testloader = DataLoader(self.testset, batch_size=10, shuffle=True)
+        self.trainloader = DataLoader(self.trainset, batch_size=30, shuffle=True)
+        self.testloader = DataLoader(self.testset, batch_size=10, shuffle=False)
         self.evts_to_fit_train.clear()
         self.evts_to_fit_test.clear()
 
 
     def TrainNN(self):
-        losslist=list()
-        epochloss=0
         epochs = 20
         running_loss=0
-        # self.criterion = nn.MSELoss()
-        self.optimizer = optim.Adam(self.model.parameters(), lr=0.00001)
+        self.criterion = nn.MSELoss()
         self.model = self.model.to(device)
-        self.path_model = "./model_CNN1D/"
+        self.optimizer = optim.Adam(self.model.parameters(), lr=0.00005)
+        self.path_model = f"./model_CNN1D{self.model_label}/"
         self.PrepareDataloader()
+        self.v_train_loss = []
+        self.v_test_loss = []
         length_train = len(self.trainloader)
         for epoch in range(epochs):
             for time_profile, ratio_lepton in self.trainloader:
                 time_profile, ratio_lepton = time_profile.to(device), ratio_lepton.to(device)
                 #-----------------Forward Pass----------------------
-                output=self.model(time_profile)
-                # loss=self.criterion(output,ratio_lepton)
-                loss=LossFunc(output, ratio_lepton)
+                output=self.model(time_profile).view((-1))
+                loss=self.criterion(output,ratio_lepton)
+                # loss=LossFunc(output, ratio_lepton)
                 #-----------------Backward Pass---------------------
                 self.optimizer.zero_grad()
                 loss.backward()
                 self.optimizer.step()
 
                 running_loss+=loss.item()
-                epochloss+=loss.item()
-            print("########################")
-            print(f"predict:\t", output)
-            print(f"truth:\t", ratio_lepton.detach().cpu().numpy())
+            # print("########################")
+            # print(f"predict:\t", output)
+            # print(f"truth:\t", ratio_lepton.detach().cpu().numpy())
             # -----------------Log-------------------------------
-            losslist.append(running_loss/length_train)
-            running_loss=0
-            print("======> epoch: {}/{}, Loss:{}".format(epoch,epochs,loss.item()))
+            self.v_train_loss.append(running_loss/length_train)
+            print("======> epoch: {}/{}, Loss:{}".format(epoch,epochs,self.v_train_loss[-1]))
+            running_loss = 0
             self.TestNN()
+
+        self.SaveModel()
+
+        if self.save_ML_output:
+            self.SaveOutput()
+
+    def SaveModel(self):
         if not os.path.isdir(self.path_model):
             os.mkdir(self.path_model)
         state = {"net": self.model.state_dict()}
@@ -604,22 +637,39 @@ class FitWithComponent:
 
     def TestNN(self):
         self.model.eval()
+        self.v_output_predict = []
+        self.v_truth = []
         with torch.no_grad():
             running_loss = 0
             for time_profile, ratio_lepton in self.testloader:
                 time_profile, ratio_lepton = time_profile.to(device), ratio_lepton.to(device)
-                output = self.model(time_profile)
-                # loss=self.criterion(output,ratio_lepton)
-                loss=LossFunc(output, ratio_lepton)
+                output = self.model(time_profile).view((-1))
+                loss=self.criterion(output,ratio_lepton)
+                # loss=LossFunc(output, ratio_lepton)
                 running_loss += loss.item()
                 output=output.detach().cpu().numpy()
+                ratio_lepton = ratio_lepton.detach().cpu().numpy()
                 # print("########################")
                 # print(f"predict:\t", output)
-                # print(f"truth:\t", ratio_lepton.detach().cpu().numpy())
+                # print(f"truth:\t", ratio_lepton)
+                self.v_output_predict+=list(output)
+                self.v_truth+=list(ratio_lepton)
+            self.v_test_loss.append(running_loss/len(self.testloader))
+            print("Test Loss:\t", self.v_test_loss[-1])
 
-            print("Test Loss:\t", running_loss/len(self.testloader))
+    def SaveOutput(self):
+        self.dir_save = self.path_model
+        if not os.path.isdir(self.dir_save):
+            os.mkdir(self.dir_save)
+        np.savez(self.dir_save+"predict.npz", dir_events=self.evts_to_fit_test, predict=np.array(self.v_output_predict),
+                 truth=np.array(self.v_truth), train_loss=self.v_train_loss, test_loss=self.v_test_loss)
+
 
 if __name__ == "__main__":
+
+    parser = argparse.ArgumentParser(description='DSNB component fitter')
+    parser.add_argument("--model", "-m", type=int, help="which ML model to use", default=0 )
+    args = parser.parse_args()
 
     plot_pdf = False
     check_poly_fit_pdf = False
@@ -638,7 +688,7 @@ if __name__ == "__main__":
     constrain_fitting_amplitude_sum_as_1 = False
     fix_time_parameters = True
 
-    use_ML_method = False
+    use_ML_method = True
 
     check_result_plot_fit = False
     check_result_plot_pdf = True
@@ -695,6 +745,7 @@ if __name__ == "__main__":
         FLH.PlotGammaRatioAndFit(n_to_fit=n_to_fit, name_file_to_save=f"./{fitting_source}_fitting_result.npz")
         plt.show()
     else:
+        FLH.UniformLeptonRatioDistribution()
         FLH.SplitSamples(ratio_train=0.95)
         FLH.TrainNN()
 
