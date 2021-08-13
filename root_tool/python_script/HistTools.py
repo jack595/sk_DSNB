@@ -17,6 +17,5 @@ def GetHist2DProjectionY(h_2d:np.ndarray, h_edges_x:np.ndarray, h_edges_y:np.nda
     h_mesh = np.array(np.meshgrid(h_center_y, h_center_x))
     h_projection = np.average(h_mesh[0], weights=h_2d, axis=1)
     if plot:
-        plt.step(h_center_x, h_projection,where="mid", color="black", legend="ProjectionX" )
-        plt.legend()
+        plt.step(h_center_x, h_projection,where="mid", color="black" )
     return (h_center_x, h_projection)

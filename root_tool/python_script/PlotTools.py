@@ -9,3 +9,5 @@ import numpy as np
 plt.style.use("/afs/ihep.ac.cn/users/l/luoxj/Style/Paper.mplstyle")
 def GetListOfCmap():
     return [plt.cm.spring ,plt.cm.hot, plt.cm.winter, plt.cm.autumn, plt.cm.pink, plt.cm.cool]
+def GetListOfLineColor():
+    return ["b","g","r","c","m","y","k","w"]

@@ -27,16 +27,23 @@ class PlotTrackOfProcess:
         if self.name_file_last != name_file:
             self.f = up.open(name_file)
             self.tree_track = self.f[key_tree]
+            self.tree_evt = self.f["evt"]
             self.dir_tracks = {}
             for key in self.tree_track.keys():
                 self.dir_tracks[key] = np.array(self.tree_track[key])
             self.set_evID = set(self.dir_tracks["evtID"])
+
+            self.dir_evts = {}
+            for key in self.tree_evt.keys():
+                self.dir_evts[key] = np.array(self.tree_evt[key])
+
             self.f.close()
             self.name_file_last = name_file
         else:
             pass
 
-    def PlotTrack(self,evtID_plot, brief_show=True, pdf=None, debug=False, threshold_track_length=10):
+
+    def PlotTrack(self,evtID_plot, brief_show=True, pdf=None, debug=False, threshold_track_length=10, print_track_info=False):
         if brief_show:
             threshold_track_length_plot = threshold_track_length
         else:
@@ -45,6 +52,8 @@ class PlotTrackOfProcess:
         ax = fig.add_subplot(111, projection="3d")
         index_evtID_plot = (self.dir_tracks["evtID"] == evtID_plot)
         # print(self.dir_tracks["Mu_Posx"][index_evtID_plot])
+        if print_track_info:
+            print("####################################################")
         for i in range(len(self.dir_tracks["Mu_Posx"][index_evtID_plot])):
             pdg = self.dir_tracks["pdgID"][index_evtID_plot][i]
             if pdg in self.list_continue_pdg:
@@ -74,12 +83,20 @@ class PlotTrackOfProcess:
                 ax.set_xlabel("X [ mm ]")
                 ax.set_ylabel("Y [ mm ]")
                 ax.set_zlabel("Z [ mm ]")
+
+                if print_track_info:
+                    print("pdg:\t", pdg, "\tmomentum:\t", p)
         if pdf != None and not debug:
             pdf.savefig()
         if not debug:
             plt.close()
         else:
             plt.show()
+
+    def PlotTrackWithEntrySource(self, entry_source, brief_show=True, pdf=None, debug=False, threshold_track_length=10, print_track_info=False):
+        evtID_to_plot = self.dir_evts["evtID"][entry_source]
+        print("Edep:\t", self.dir_evts["edep"][entry_source], "---->")
+        self.PlotTrack(evtID_plot=evtID_to_plot, brief_show=brief_show, pdf=pdf, debug=debug, threshold_track_length=threshold_track_length, print_track_info=print_track_info)
 
     def PlotIntoPdf(self, n_pages=10, name_out_pdf="track_plot.pdf"):
         with PdfPages(name_out_pdf) as pdf:
@@ -121,6 +138,11 @@ class PlotTrackOfProcess:
 
         max_total_track_length = np.max(np.array(v_total_track_length))
         return (max_track_length_from_vertex, max_total_track_length)
+    
+    def GetMaxTrackLengthWithEntrySource(self,  entry_source, vertex_Edep:np.ndarray):
+        evtID_to_plot = self.dir_evts["evtID"][entry_source]
+        self.GetMaxTrackLength(evtID_to_plot, vertex_Edep)
+
 
 
 
