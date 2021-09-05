@@ -63,13 +63,13 @@ class GenEventGif:
 
         self.k_means_tool =  Clustering_SKM3D()
         self.do_clustering = False
-        self.add_clustering_to_pdf = True
+        self.add_clustering_to_pdf = False
         self.clustering_with_weight = False
 
         self.debug_not_save_pdf = False
         self.save_into_one_pdf = True
         self.subtract_TOF = False
-        self.constrain_by_subtract_TOF = True
+        self.constrain_by_subtract_TOF = False
         self.constrain_down_limit_by_subtract_TOF = -100
         self.constrain_up_limit_by_subtract_TOF = 2
         self.threshold_equen = 700
@@ -92,11 +92,13 @@ class GenEventGif:
         self.i_entry_to_separate = 0
         self.name_save_detsim = f"./SimultationStudy/entry_{self.i_entry_to_separate}/"
 
+        self.load_detsim_userdata = True
 
         if self.plot_track:
             self.plot_track_tool = PlotTrackOfProcess()
             self.name_file_current_plot_track = ""
             self.name_file_template_plot_track = "/afs/ihep.ac.cn/users/l/luoxj/ProtonDecayML/GenerateAtmNu_no_optical/detsim/detsim_user-{}.root"
+
 
     def LoadMeshFile(self, name_file_mesh:str):
         self.max_n_points_grid: bool = True
@@ -130,8 +132,12 @@ class GenEventGif:
         self.x_V, self.y_V, self.z_V = self.V[:, 0], self.V[:, 1], self.V[:, 2]
 
     def LoadDataset(self, name_files:str, key_in_root:str):
+        self.name_files = name_files
         self.chain = ROOT.TChain(key_in_root)
-        self.chain.Add(name_files)
+        print(self.chain.Add(name_files))
+
+    def ClearTChain(self):
+        self.chain.Reset()
 
     def GenEquenList(self, name_save:str):
         self.chain.SetBranchStatus("*", 0)
@@ -159,8 +165,11 @@ class GenEventGif:
         self.evt_event_level = {}
         # self.entry_relative_one_file = self.chain.LoadTree(i)
         self.chain.GetEntry(i)
-        self.seed_name_file_current_chain = str(self.chain.GetCurrentFile().GetName()).split("Uedm_")[1].split(".")[0]
-        if load_detsim_userdata:
+
+        if not self.load_detsim_userdata:
+            self.seed_name_file_current_chain = str(self.chain.GetCurrentFile().GetName()).split("Uedm_")[1].split(".")[0]
+
+        if self.load_detsim_userdata:
             self.evt_pmt_level["pmtid"] = np.array(self.chain.pmtID, dtype=np.int32)
             self.evt_pmt_level["npes"] = np.array(self.chain.nPE, dtype=np.float32)
             self.evt_pmt_level["hittime"] = np.array(self.chain.hitTime, dtype=np.float32)
@@ -259,7 +268,8 @@ source /cvmfs/juno.ihep.ac.cn/centos7_amd64_gcc830/Pre-Release/J21v1r0-Pre0/setu
         for i in range(len(self.v_name_label)):
             self.GenOneDetsimScript(self.v_name_label[i], self.v_momentum[i], self.v_vertex[i], self.v_name_particle[i], name_dir_save=self.name_save_detsim)
 
-    def GetRawEventFig(self, event2dimage, x, y, z, plot_particles=False, relative_distribution=False):
+    def GetRawEventFig(self, event2dimage, x, y, z, plot_particles=False, relative_distribution=False,
+                       name_title=""):
         if not relative_distribution:
             x_hittime, y_hittime, z_hittime = x,y,z
             x_equen, y_equen, z_equen = x, y, z
@@ -273,7 +283,7 @@ source /cvmfs/juno.ihep.ac.cn/centos7_amd64_gcc830/Pre-Release/J21v1r0-Pre0/setu
         if self.subtract_TOF:
             ax1.set_title("Emission Time")
         else:
-            ax1.set_title("Hit-Time")
+            ax1.set_title("Hit-Time"+f"_{name_title}")
         fig_hittime.colorbar(img_hittime, orientation = 'horizontal')
 
         ax2 = fig_hittime.add_subplot(122, projection='3d')
@@ -401,7 +411,8 @@ source /cvmfs/juno.ihep.ac.cn/centos7_amd64_gcc830/Pre-Release/J21v1r0-Pre0/setu
             plt.close()
 
 
-    def  GetEventGif(self, i_entry=0, name_out_pdf:str="try.pdf", name_label:str=""):
+    def  GetEventGif(self, i_entry=0, name_out_pdf:str="try.pdf", name_label:str="",
+                     name_title=""):
         self.GetEntry(i_entry)
         # if self.evt_event_level["equen"]<self.threshold_equen:
         #     print(f"Equen lower than {self.threshold_equen}, Pass!!!")
@@ -427,11 +438,13 @@ source /cvmfs/juno.ihep.ac.cn/centos7_amd64_gcc830/Pre-Release/J21v1r0-Pre0/setu
                 time_bins = np.arange(0, 1250, 1)
         with PdfPages(name_out_pdf) as self.pdf:
             n_pdf = 0
-            if not load_detsim_userdata and not self.study_atm_center_specific:
-                self.PlotParticles(save_into_pdf=True)
-                self.PlotTrack()
+            # if not load_detsim_userdata and not self.study_atm_center_specific:
+            if self.plot_track:
+                if not self.load_detsim_userdata:
+                    self.PlotParticles(save_into_pdf=True)
+                self.PlotTrack(name_title)
             for i in range(len(time_bins)-1):
-                if n_pdf > 30:
+                if n_pdf > 7:
                     break
                 print("Processing ", time_bins[i], " ns")
                 self.time_label = f"( {time_bins[i]} - {time_bins[i+1]} ns )"
@@ -508,20 +521,34 @@ source /cvmfs/juno.ihep.ac.cn/centos7_amd64_gcc830/Pre-Release/J21v1r0-Pre0/setu
     def CreatePDFTotal(self, name_pdf:str):
         self.pdf_total = PdfPages(name_pdf)
     def ClosePDFTotal(self):
+        print("Closing PDF_total!")
         self.pdf_total.close()
+        print("Closed PDF_total!")
+        exit(1)
 
-    def PlotTrack(self):
-        if self.name_file_current_plot_track != self.name_file_template_plot_track.format(self.seed_name_file_current_chain):
-            self.name_file_current_plot_track = self.name_file_template_plot_track.format(self.seed_name_file_current_chain)
-            self.plot_track_tool.SetDataset(self.name_file_current_plot_track)
+    def PlotTrack(self, name_title=""):
+        if not self.load_detsim_userdata:
+            if self.name_file_current_plot_track != self.name_file_template_plot_track.format(self.seed_name_file_current_chain):
+                self.name_file_current_plot_track = self.name_file_template_plot_track.format(self.seed_name_file_current_chain)
+                self.plot_track_tool.SetDataset(self.name_file_current_plot_track)
+        else:
+            self.plot_track_tool.SetDataset(self.name_files)
         self.plot_track_tool.PlotTrack(evtID_plot=self.evt_event_level["evtID"],pdf=self.pdf_total,
-                                       threshold_track_length=100,debug=self.debug_not_save_pdf)
+                                       threshold_track_length=100,debug=self.debug_not_save_pdf,show_p_direction=False,
+                                       name_title=name_title)
 
 if __name__ == '__main__':
-    load_detsim_userdata = False
+    import argparse
+    parser = argparse.ArgumentParser(description='Plot Event Gif')
+    parser.add_argument("--file", "-f", type=str, help="file input to plot", default="root://junoeos01.ihep.ac.cn//eos/juno/user/luoxj/Atm/proton/0_0_12000/user-detsim-z_12000_theta_1.75.root")
+    # parser.add_argument("--Nspe", "-N", type=int, default=0, help="this num is to control which ")
+    args = parser.parse_args()
+
+    use_equen_cut = False
+    load_detsim_J20 = False
     # name_atm_file_study_center_specific = "/afs/ihep.ac.cn/users/h/huyuxiang/junofs/2021-2-23/proton-decay/test/atmsample/Uedm/Uedm_e_cc_coh.root"
     name_atm_file_study_center_specific = "/afs/ihep.ac.cn/users/h/huyuxiang/junofs/2021-2-23/proton-decay/test/atmsample/Uedm/Uedm_mu_cc_dis.root"
-    if load_detsim_userdata:
+    if load_detsim_J20:
         gen_gif = GenEventGif("/cvmfs/juno.ihep.ac.cn/centos7_amd64_gcc830/Pre-Release/J20v2r0-Pre2/offline/Simulation/DetSimV2/DetSimOptions/data/PMTPos_Acrylic_with_chimney.csv")
     else:
         gen_gif = GenEventGif(
@@ -529,17 +556,7 @@ if __name__ == '__main__':
     gen_gif.LoadMeshFile(name_file_mesh="./mesh_files/icosphere_5.pkl")
 
 
-    name_source_particle = ""
-    if load_detsim_userdata:
-        name_source_particle = "e+"
-    else:
-        if gen_gif.study_atm:
-            if gen_gif.study_atm_center_specific:
-                name_source_particle = name_atm_file_study_center_specific.split("/")[-1].split(".")[0]
-            else:
-                name_source_particle = "atm"
-        else:
-            name_source_particle = "proton-decay"
+
     label_save_file = ""
     if gen_gif.subtract_TOF:
         label_save_file += "subtractTOF"
@@ -547,11 +564,15 @@ if __name__ == '__main__':
         label_save_file += "_relative"
     else:
         label_save_file += "_absolute"
-    label_save_file += f"_Eupper{gen_gif.threshold_equen}"
+    if use_equen_cut:
+        label_save_file += f"_Eupper{gen_gif.threshold_equen}"
 
 
-    if load_detsim_userdata:
-        gen_gif.LoadDataset("/afs/ihep.ac.cn/users/l/luoxj/scratchfs_juno_500G/e+_highE/user-detsim-50.root", "evt")
+    if gen_gif.load_detsim_userdata:
+        # gen_gif.LoadDataset("/afs/ihep.ac.cn/users/l/luoxj/scratchfs_juno_500G/e+_highE/user-detsim-50.root", "evt")
+        # gen_gif.LoadDataset("/afs/ihep.ac.cn/users/l/luoxj/ProtonDecayML/Sim_Single_Particle/e-/0_0_0/user-detsim-z_0_theta_0.00.root", "evt")
+        # gen_gif.LoadDataset("root://junoeos01.ihep.ac.cn//eos/juno/user/luoxj/Atm/proton/0_0_12000/user-detsim-z_12000_theta_1.75.root", "evt")
+        gen_gif.LoadDataset(args.file, "evt")
     else:
         if gen_gif.study_atm:
             if gen_gif.study_atm_center_specific:
@@ -563,12 +584,29 @@ if __name__ == '__main__':
         else:
             gen_gif.LoadDataset("/afs/ihep.ac.cn/users/l/luoxj/ProtonDecayML/ProtonDecay_hu/Uedm_*.root", "simevent")
 
-    name_save_equen = "equen_list_"+name_source_particle+".npz"
-    if not os.path.exists(name_save_equen):
-        gen_gif.GenEquenList(name_save_equen)
+    name_source_particle = ""
+    if gen_gif.load_detsim_userdata:
+        # name_source_particle = gen_gif.name_files.split("Sim_Single_Particle/")[-1].split("/")[0]
+        name_source_particle = gen_gif.name_files.split("/eos/juno/user/luoxj/")[-1].split("/")[1] +gen_gif.name_files.split("user-detsim")[-1].split(".root")[0]
     else:
-        gen_gif.LoadEquenList(name_save_equen)
-    gen_gif.GetEntryListWithEquenCut()
+        if gen_gif.study_atm:
+            if gen_gif.study_atm_center_specific:
+                name_source_particle = name_atm_file_study_center_specific.split("/")[-1].split(".")[0]
+            else:
+                name_source_particle = "atm"
+        else:
+            name_source_particle = "proton-decay"
+
+    if use_equen_cut:
+        name_save_equen = "equen_list_"+name_source_particle+".npz"
+        if not os.path.exists(name_save_equen):
+            gen_gif.GenEquenList(name_save_equen)
+        else:
+            gen_gif.LoadEquenList(name_save_equen)
+        gen_gif.GetEntryListWithEquenCut()
+    else:
+        gen_gif.entries_list = range(gen_gif.chain.GetEntries())
+
 
     if gen_gif.plot_separate_particle:
         if not os.path.isdir(f"{gen_gif.name_save_detsim}/plot_pdf_separate/"):
@@ -593,6 +631,3 @@ if __name__ == '__main__':
         if gen_gif.save_into_one_pdf:
             gen_gif.ClosePDFTotal()
         # gen_gif.GetEventGif(i_entry=1, name_out_pdf=f"atm-NC-1.pdf")
-
-
-

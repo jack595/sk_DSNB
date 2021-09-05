@@ -8,6 +8,8 @@ import numpy as np
 import uproot4 as up
 from matplotlib.backends.backend_pdf import PdfPages
 import sys
+from copy import copy
+import tqdm
 sys.path.append("/afs/ihep.ac.cn/users/l/luoxj/root_tool/python_script/")
 from GetPhysicsProperty import GetKineticE, PDGMassMap
 
@@ -25,31 +27,85 @@ class PlotTrackOfProcess:
 
     def SetDataset(self, name_file:str, key_tree="mu_tracking"):
         if self.name_file_last != name_file:
-            self.f = up.open(name_file)
-            self.tree_track = self.f[key_tree]
-            self.tree_evt = self.f["evt"]
-            self.dir_tracks = {}
-            for key in self.tree_track.keys():
-                self.dir_tracks[key] = np.array(self.tree_track[key])
-            self.set_evID = set(self.dir_tracks["evtID"])
+            with up.open(name_file) as self.f:
+                self.tree_track = self.f[key_tree]
+                self.tree_evt = self.f["evt"]
+                self.tree_depTree = self.f["depTree"]
+                self.dir_tracks = {}
+                for key in self.tree_track.keys():
+                    self.dir_tracks[key] = np.array(self.tree_track[key])
+                self.set_evID = set(self.dir_tracks["evtID"])
+                self.v_equen = np.array(self.tree_depTree["QEnergyDeposit"])
 
-            self.dir_evts = {}
-            for key in self.tree_evt.keys():
-                self.dir_evts[key] = np.array(self.tree_evt[key])
+                self.dir_evts = {}
+                for key in self.tree_evt.keys():
+                    self.dir_evts[key] = np.array(self.tree_evt[key])
 
-            self.f.close()
-            self.name_file_last = name_file
+                self.name_file_last = name_file
         else:
             pass
 
+    def GetTotalEntries(self):
+        return len(self.dir_evts["evtID"])
 
-    def PlotTrack(self,evtID_plot, brief_show=True, pdf=None, debug=False, threshold_track_length=10, print_track_info=False):
+    def GetEquen(self, entry_source, filter_n_capture=False):
+        if filter_n_capture:
+            return np.sum(self.v_equen[entry_source][:-1])
+        else:
+            return np.sum(self.v_equen[entry_source])
+
+    def Get_v_Equen(self, filter_n_capture=False):
+        self.v_equen_without_n_capture = []
+        if filter_n_capture:
+            for i in range(len(self.v_equen)):
+                self.v_equen_without_n_capture.append(np.sum(self.v_equen[i][:-1]))
+        else:
+            for i in range(len(self.v_equen)):
+                self.v_equen_without_n_capture.append(np.sum(self.v_equen[i]))
+        return np.array(self.v_equen_without_n_capture)
+
+    def PlotEquen(self, title="",bins=None, filter_n_capture=False, name_fig_save:str=None):
+        check_filter_n_capture = False
+        plt.figure()
+        self.v_equen_without_n_capture = self.Get_v_Equen(filter_n_capture=filter_n_capture)
+        if check_filter_n_capture and filter_n_capture:
+            index_anormal_peak = (np.array(self.v_equen_without_n_capture)>5)
+            number_anormal_peak = np.where(index_anormal_peak==True)[0]
+            print("#######################################")
+            # print("Equen:\t",self.v_equen[index_anormal_peak])
+            # print("Edep:\t",self.dir_evts["edep"][index_anormal_peak])
+            # print(self.Get_dE_dx_ByLoading_into_dir(number_anormal_peak[0], merge_same_pdg=True)[1])
+            for i in range(5):
+                print("dE:\t",self.Get_dE_Sum_into_dir(number_anormal_peak[i]))
+                self.PlotTrackWithEntrySource(number_anormal_peak[i], debug=True, show_p_direction=False, print_track_info=True)
+
+        plt.hist(self.v_equen_without_n_capture, bins=bins, histtype="step")
+        plt.xlabel("$E_{quench}$ [ MeV ]")
+        plt.title(title)
+        if name_fig_save!=None:
+            plt.savefig(name_fig_save)
+        return np.array(self.v_equen_without_n_capture)
+
+    def GetPDGSet(self,entry_source):
+        evtID_plot = self.dir_evts["evtID"][entry_source]
+        index_evtID_plot = (self.dir_tracks["evtID"] == evtID_plot)
+        set_pdg = set()
+        for i in range(len(self.dir_tracks["Mu_Posx"][index_evtID_plot])):
+            pdg = self.dir_tracks["pdgID"][index_evtID_plot][i]
+            set_pdg.add(pdg)
+        return set_pdg
+
+
+    def PlotTrack(self,evtID_plot, brief_show=True, pdf=None, debug=False, threshold_track_length=10, print_track_info=False,
+                  show_p_direction=True, name_title=""):
+        set_pdg = set()
         if brief_show:
             threshold_track_length_plot = threshold_track_length
         else:
             threshold_track_length_plot = 0
         fig = plt.figure()
         ax = fig.add_subplot(111, projection="3d")
+        ax.set_title(name_title)
         index_evtID_plot = (self.dir_tracks["evtID"] == evtID_plot)
         # print(self.dir_tracks["Mu_Posx"][index_evtID_plot])
         if print_track_info:
@@ -72,7 +128,8 @@ class PlotTrackOfProcess:
             if l_track > threshold_track_length_plot:
                 p = (one_track_px[0] ** 2 + one_track_py[0] ** 2 + one_track_pz[0] ** 2) ** 0.5
                 ax.plot(one_track_x, one_track_y, one_track_z, color=color)
-                ax.quiver(one_track_x, one_track_y, one_track_z,
+                if show_p_direction:
+                    ax.quiver(one_track_x, one_track_y, one_track_z,
                           one_track_px, one_track_py, one_track_pz,
                           color=color, ls="--", linewidth=2)
                 # add_arrow(line, color=color)
@@ -84,19 +141,22 @@ class PlotTrackOfProcess:
                 ax.set_ylabel("Y [ mm ]")
                 ax.set_zlabel("Z [ mm ]")
 
-                if print_track_info:
-                    print("pdg:\t", pdg, "\tmomentum:\t", p)
+                set_pdg.add(pdg)
+            if print_track_info:
+                print("pdg:\t", pdg, "\tmomentum:\t", p)
         if pdf != None and not debug:
             pdf.savefig()
         if not debug:
             plt.close()
         else:
             plt.show()
+        return set_pdg
 
-    def PlotTrackWithEntrySource(self, entry_source, brief_show=True, pdf=None, debug=False, threshold_track_length=10, print_track_info=False):
+    def PlotTrackWithEntrySource(self, entry_source, brief_show=True, pdf=None, debug=False, threshold_track_length=10, print_track_info=False,show_p_direction=True):
         evtID_to_plot = self.dir_evts["evtID"][entry_source]
         print("Edep:\t", self.dir_evts["edep"][entry_source], "---->")
-        self.PlotTrack(evtID_plot=evtID_to_plot, brief_show=brief_show, pdf=pdf, debug=debug, threshold_track_length=threshold_track_length, print_track_info=print_track_info)
+        return self.PlotTrack(evtID_plot=evtID_to_plot, brief_show=brief_show, pdf=pdf, debug=debug, threshold_track_length=threshold_track_length, print_track_info=print_track_info,
+                              show_p_direction=show_p_direction)
 
     def PlotIntoPdf(self, n_pages=10, name_out_pdf="track_plot.pdf"):
         with PdfPages(name_out_pdf) as pdf:
@@ -138,10 +198,182 @@ class PlotTrackOfProcess:
 
         max_total_track_length = np.max(np.array(v_total_track_length))
         return (max_track_length_from_vertex, max_total_track_length)
-    
+
     def GetMaxTrackLengthWithEntrySource(self,  entry_source, vertex_Edep:np.ndarray):
         evtID_to_plot = self.dir_evts["evtID"][entry_source]
         self.GetMaxTrackLength(evtID_to_plot, vertex_Edep)
+
+    def GetOneTrack_dE_dx(self, one_track_x, one_track_y, one_track_z,
+                          one_track_px, one_track_py, one_track_pz, mass):
+        one_track_dx = []
+        one_track_dE = []
+        v_Ek =  GetKineticE(one_track_px**2+one_track_py**2+one_track_pz**2, mass)
+        for i_step in range(len(one_track_x)-1):
+            one_track_dx.append( ((one_track_x[i_step+1]-one_track_x[i_step])**2 + (one_track_y[i_step+1]-one_track_y[i_step])**2 +
+            (one_track_z[i_step+1]-one_track_z[i_step])**2)**0.5 )
+            # one_track_dE.append( ((one_track_px[i_step+1]-one_track_px[i_step])**2 + (one_track_py[i_step+1]-one_track_py[i_step])**2 +
+            #                       (one_track_pz[i_step+1]-one_track_pz[i_step])**2)**0.5 )
+            one_track_dE.append(v_Ek[i_step]-v_Ek[i_step+1])
+        one_track_dE = np.array(one_track_dE)
+        one_track_dx = np.array(one_track_dx)
+        one_track_dE_dx = one_track_dE/one_track_dx
+        # print("dE:\t", one_track_dE)
+        # print("dx:\t",one_track_dx)
+        return np.nan_to_num(one_track_dE_dx)
+
+    def Get_dE_dx_ByCalculating(self, entry_source):
+        index_evtID_specific = (self.dir_tracks["evtID"] == self.dir_evts["evtID"][entry_source])
+        dir_dE_dx = {}
+        for i in range(len(self.dir_tracks["Mu_Posx"][index_evtID_specific])):
+            pdg = self.dir_tracks["pdgID"][index_evtID_specific][i]
+            if pdg in self.list_continue_pdg:
+                continue
+            mass = self.pdg_mass_map.PDGToMass(pdg)
+            one_track_x = self.dir_tracks["Mu_Posx"][index_evtID_specific][i]
+            one_track_y = self.dir_tracks["Mu_Posy"][index_evtID_specific][i]
+            one_track_z = self.dir_tracks["Mu_Posz"][index_evtID_specific][i]
+            one_track_px = self.dir_tracks["Mu_Px"][index_evtID_specific][i]
+            one_track_py = self.dir_tracks["Mu_Py"][index_evtID_specific][i]
+            one_track_pz = self.dir_tracks["Mu_Pz"][index_evtID_specific][i]
+
+            # Skip Neutron Capture Gamma
+            p = (one_track_px[0]**2+one_track_py[0]**2+one_track_pz[0]**2)**0.5
+            if p<2.28 and p>2.18 and pdg==22:
+                continue
+
+            # one_track_dE = (one_track_px[-1]**2+one_track_py[-1]**2+one_track_pz[-1]**2) - \
+            #                (one_track_px[0]**2+one_track_py[0]**2+one_track_pz[0]**2)
+
+            dir_dE_dx[f"{int(pdg)}_{i}"] = self.GetOneTrack_dE_dx(one_track_x,one_track_y, one_track_z,
+                                         one_track_px, one_track_py, one_track_pz, mass)
+        return dir_dE_dx
+
+
+    def Get_dE_dx_ByLoading_into_dir(self, entry_source, merge_same_pdg=False, return_dE_ratio=False, return_dE_quench=False):
+        index_evtID_specific = (self.dir_tracks["evtID"] == self.dir_evts["evtID"][entry_source])
+        dir_dE_dx = {}
+        dir_dE = {}
+        dE_sum = 0
+        dir_dE_quench = {}
+        for i in range(len(self.dir_tracks["Mu_dE"][index_evtID_specific])):
+            pdg = int(self.dir_tracks["pdgID"][index_evtID_specific][i])
+            if pdg in self.list_continue_pdg:
+                continue
+            one_track_dE = self.dir_tracks["Mu_dE"][index_evtID_specific][i]
+            one_track_dx = self.dir_tracks["Mu_dx"][index_evtID_specific][i]
+            one_track_dE_quench = self.dir_tracks["Mu_dE_quench"][index_evtID_specific][i]
+            one_track_dE_dx = np.nan_to_num(one_track_dE/one_track_dx)
+            if not merge_same_pdg:
+                dir_dE_dx[f"{pdg}_{i}"] = copy(one_track_dE_dx)
+                dir_dE[f"{pdg}_{i}"] = copy(one_track_dE)
+                dir_dE_quench[f"{pdg}_{i}"] = copy(one_track_dE_quench)
+            else:
+                if pdg not in dir_dE_dx:
+                    dir_dE_dx[pdg] = np.array([])
+                    dir_dE[pdg] = np.array([])
+                    dir_dE_quench[pdg] = np.array([])
+                dir_dE_dx[pdg] = np.concatenate((dir_dE_dx[pdg], one_track_dE_dx))
+                dir_dE[pdg] = np.concatenate((dir_dE[pdg], one_track_dE))
+                dir_dE_quench[pdg] = np.concatenate((dir_dE_quench[pdg],one_track_dE_quench))
+            if return_dE_ratio:
+                dE_sum += np.sum(one_track_dE)
+        if return_dE_ratio:
+            for key in dir_dE.keys():
+                dir_dE[key] = dir_dE[key] /dE_sum
+        if return_dE_quench:
+            return (dir_dE_dx, dir_dE, dir_dE_quench)
+        else:
+            return (dir_dE_dx, dir_dE)
+
+    def Get_dE_Sum_into_dir(self, entry_source):
+        dir_v_dE = self.Get_dE_dx_ByLoading_into_dir(entry_source, merge_same_pdg=True)[1]
+        dir_dE_sum = {}
+        for key in dir_v_dE.keys():
+            dir_dE_sum[key] = np.sum(dir_v_dE[key])
+        return dir_dE_sum
+
+
+
+    def PlotDiffParticle_dE_dx(self, entry_source, print_info=False, bins=None, filter_nuclei=True):
+        dir_diff_particle_dE_dx, dir_diff_particle_dE = self.Get_dE_dx_ByLoading_into_dir(entry_source, merge_same_pdg=True)
+        if print_info:
+            print("dE/dx:\n",dir_diff_particle_dE_dx)
+            print("dE:\n", dir_diff_particle_dE)
+            total_dE_track = 0
+            for key in dir_diff_particle_dE.keys():
+                dE_particle = np.sum(dir_diff_particle_dE[key])
+                print(key, dE_particle)
+                total_dE_track += dE_particle
+            print("total deposit energy with track:\t", total_dE_track)
+            print("total deposit energy:\t", self.dir_evts["edep"][entry_source])
+            print("total equen:\t", self.v_equen[entry_source])
+            print("################################")
+
+        plt.figure()
+        for pdg in dir_diff_particle_dE_dx.keys():
+            if filter_nuclei and pdg > 1e9:
+                continue
+            plt.hist(dir_diff_particle_dE_dx[pdg], bins=bins, histtype="step", label=pdg)
+        plt.legend()
+
+    def Get_dE_dx_ByLoading(self, entry_source):
+        index_evtID_specific = (self.dir_tracks["evtID"] == self.dir_evts["evtID"][entry_source])
+        v_dE_dx = []
+        v_dE = []
+        for i in range(len(self.dir_tracks["Mu_dE"][index_evtID_specific])):
+            one_track_dE = self.dir_tracks["Mu_dE"][index_evtID_specific][i]
+            one_track_dx = self.dir_tracks["Mu_dx"][index_evtID_specific][i]
+            one_track_dE_dx = np.nan_to_num(one_track_dE/one_track_dx)
+            v_dE_dx.append(one_track_dE_dx)
+            v_dE.append(one_track_dE)
+        return (np.concatenate(v_dE_dx), np.concatenate(v_dE))
+
+    def Get_Average_dE_dx(self, entry_source):
+        check_calculation = False
+        v_dE_dx, v_dE = self.Get_dE_dx_ByLoading(entry_source)
+        dE_dx_average = np.sum(v_dE_dx*v_dE)/np.sum(v_dE)
+        if check_calculation:
+            print("dE/dx:\t",v_dE_dx)
+            print("dE:\t",v_dE)
+            print("dE/dx_average:\t",dE_dx_average)
+        return dE_dx_average
+
+    def Get_v_Average_dE_dx(self, entries_to_get=None):
+        if entries_to_get == None:
+            entries_to_get = self.GetTotalEntries()
+        else:
+            if entries_to_get>self.GetTotalEntries():
+                entries_to_get = self.GetTotalEntries()
+                print(f"WARNING:\tThis file got not enough entries for entries_to_get({entries_to_get})!!!!!")
+
+        v_average_dE_dx = []
+        for entry in tqdm.trange(entries_to_get):
+            v_average_dE_dx.append(self.Get_Average_dE_dx(entry))
+        return np.array(v_average_dE_dx)
+
+    def Print_dE_dx_Contribution(self,entry_source):
+        (dir_dE_dx, dir_dE_ratio) = self.Get_dE_dx_ByLoading_into_dir(entry_source, merge_same_pdg=True, return_dE_ratio=True)
+        (_, dir_dE) = self.Get_dE_dx_ByLoading_into_dir(entry_source, merge_same_pdg=True, return_dE_ratio=False)
+        print("\nAverage dE/dx:\t",self.Get_Average_dE_dx(entry_source))
+        print("Equen:\t", self.GetEquen(entry_source,filter_n_capture=True),"\n")
+        print("#######################################")
+        for key in dir_dE_dx.keys():
+            print(key, " --->")
+            print("dE/dx:\t", dir_dE_dx[key])
+            print("dE_ratio:", dir_dE_ratio[key])
+            print("dE:\t", dir_dE[key])
+            print(f"Contributed dE/dx({key}):\t", np.sum(dir_dE_dx[key]*dir_dE_ratio[key]))
+            print(f"Total Ratio({key})", np.sum(dir_dE_ratio[key]),"\n")
+        print("#######################################")
+
+
+
+
+
+
+
+
+
 
 
 

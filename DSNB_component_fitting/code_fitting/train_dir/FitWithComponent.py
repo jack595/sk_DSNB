@@ -40,13 +40,18 @@ def GetBinCenter(bins:np.ndarray):
 def ElementsAreTheSameInList(v:list):
     return (v.count(v[0])==len(v))
 
-def NormProfile(h_time:np.ndarray, h_edges:np.ndarray):
-    h_time_divide_width = h_time/np.diff(h_edges)
-    # h_time_divide_width = h_time
+def NormProfile(h_time:np.ndarray, h_edges:np.ndarray, divide_bin_width=True):
+    if divide_bin_width:
+        h_time_divide_width = h_time/np.diff(h_edges)
+    else:
+        h_time_divide_width = h_time
     return np.array(h_time_divide_width/np.max(h_time_divide_width), dtype=float)
 
-def NormProfileByArea(h_time:np.ndarray, h_edges:np.ndarray):
-    h_time_divide_width = h_time/np.diff(h_edges)
+def NormProfileByArea(h_time:np.ndarray, h_edges:np.ndarray, divide_bin_width=True):
+    if divide_bin_width:
+        h_time_divide_width = h_time/np.diff(h_edges)
+    else:
+        h_time_divide_width = h_time
     return np.array(h_time_divide_width/np.sum(h_time_divide_width*np.diff(h_edges)), dtype=float)
 
 def NormPDFByArea(h_pdf:np.ndarray, h_edges:np.ndarray):
@@ -68,7 +73,7 @@ def GetAdjustBinsIndex(n_bins:np.ndarray, bin_start:float, bin_end:float):
 
 
 class FitWithComponent:
-    def __init__(self):
+    def __init__(self, model_mode=None, validate_mode=False):
         self.key_no_charge = "w/o charge"
         self.key_with_charge = "w/ charge"
         self.dir_pdf_time_profile_no_charge = {}
@@ -84,6 +89,7 @@ class FitWithComponent:
         self.evts_to_fit = {}
         self.evts_to_fit_train = {}
         self.evts_to_fit_test = {}
+        self.evts_to_fit_validate = {}
         self.h_to_fit = np.array([])
         self.fit_result_time_profile = np.array([])
         self.v_ratio_gamma_fit = []
@@ -91,33 +97,57 @@ class FitWithComponent:
         self.n_amplitude_fit_parameters = 0
         self.n_time_parameters = 0
         self.key_pdf = ""
-        self.bin_start = -15
-        self.bin_end = 200
+        self.bin_start = -20
+        self.bin_end = 250
         self.upper_limit_amplitude = 2
         self.limit_time = 0
 
         self.not_skip_with_charge_in_normalize_data = True
+        self.divide_bin_width = False
         self.norm_pdf_by_area = False
         self.check_adjust_bins = False
 
-        self.model_mode = args.model
+        if not validate_mode:
+            self.model_mode = args.model
+        else:
+            self.model_mode = model_mode
+
         self.model_label = f"_{self.model_mode}"
+        if not validate_mode:
+            if not center_fitting:
+                self.model_label+= "_uniform"
+            else:
+                self.model_label+="_center"
+            if use_truth_time:
+                self.model_label += "_truth"
 
-        if self.model_mode == 0:
-            self.model = CNN1D()
-        elif self.model_mode == 1:
-            self.model = CNN1D_2()
-        elif self.model_mode == 2:
-            self.model = Net()
-        elif self.model_mode == 3:
-            self.model = LinearNet()
+        self.training_with_charge = False
+        self.training_combine = False
+        self.training_add_vertex = True
+        self.training_add_energy = True
+        self.training_with_equen_cut = True
 
-        self.training_with_charge = True
+        if not self.training_combine:
+            self.training_add_vertex = False
+            print("Warning!!! training_add_vertex option only avaliable for training_vertex, so we turn it off")
+
+        if not self.training_add_vertex:
+            self.training_add_energy = False
         self.save_ML_output = True
+        self.load_uniform_R_lepton_data = True
 
-        self.option_h_time = "" # Whether use Truth
-        if use_truth_time:
-            self.option_h_time = "_truth"
+        if not validate_mode:
+            self.option_h_time = "" # Whether use Truth
+            if use_truth_time:
+                self.option_h_time = "_truth"
+
+        if self.training_combine:
+            self.model_label += "_combine"
+        if self.training_add_vertex:
+            self.model_label += "_add_vertex"
+        if self.training_add_energy:
+            self.model_label += "_add_energy"
+
 
     def LoadTimeProfilePDF(self, dir_name_files:dict):
         key_time_in_root = "h_time_average"
@@ -184,9 +214,11 @@ class FitWithComponent:
         self.evts_to_fit["statistical_error_time_with_charge"] = []
         for i in range(len(self.evts_to_fit["h_time"+self.option_h_time])):
             if self.norm_pdf_by_area:
-                self.evts_to_fit["h_time_norm"].append( NormProfileByArea(h_time=self.evts_to_fit["h_time"+self.option_h_time][i][self.index_h_time], h_edges=self.bins[self.key_no_charge]) )
+                self.evts_to_fit["h_time_norm"].append( NormProfileByArea(h_time=self.evts_to_fit["h_time"+self.option_h_time][i][self.index_h_time], h_edges=self.bins[self.key_no_charge],
+                                                                          divide_bin_width=self.divide_bin_width) )
                 if self.not_skip_with_charge_in_normalize_data:
-                    self.evts_to_fit["h_time_with_charge_norm"].append(NormProfileByArea(h_time=self.evts_to_fit["h_time_with_charge"+self.option_h_time][i][self.index_h_time_with_charge], h_edges=self.bins[self.key_with_charge]))
+                    self.evts_to_fit["h_time_with_charge_norm"].append(NormProfileByArea(h_time=self.evts_to_fit["h_time_with_charge"+self.option_h_time][i][self.index_h_time_with_charge],
+                                                                                         h_edges=self.bins[self.key_with_charge], divide_bin_width=self.divide_bin_width))
                 if not use_relative_error:
                     self.evts_to_fit["statistical_error_time"].append( (self.evts_to_fit["h_time"+self.option_h_time][i][self.index_h_time])**0.5/np.sum(self.evts_to_fit["h_time"+self.option_h_time][i]) )
                     if self.not_skip_with_charge_in_normalize_data:
@@ -201,9 +233,11 @@ class FitWithComponent:
                         (self.evts_to_fit["h_time_with_charge"+self.option_h_time][i][self.index_h_time_with_charge]) ** 0.5 / (
                         self.evts_to_fit["h_time"+self.option_h_time][i][self.index_h_time_with_charge]))
             else:
-                self.evts_to_fit["h_time_norm"].append( NormProfile(h_time=self.evts_to_fit["h_time"+self.option_h_time][i][self.index_h_time], h_edges=self.bins[self.key_no_charge]) )
+                self.evts_to_fit["h_time_norm"].append( NormProfile(h_time=self.evts_to_fit["h_time"+self.option_h_time][i][self.index_h_time],
+                                                                    h_edges=self.bins[self.key_no_charge], divide_bin_width=self.divide_bin_width) )
                 if self.not_skip_with_charge_in_normalize_data:
-                    self.evts_to_fit["h_time_with_charge_norm"].append(NormProfile(h_time=self.evts_to_fit["h_time_with_charge"+self.option_h_time][i][self.index_h_time_with_charge], h_edges=self.bins[self.key_with_charge]))
+                    self.evts_to_fit["h_time_with_charge_norm"].append(NormProfile(h_time=self.evts_to_fit["h_time_with_charge"+self.option_h_time][i][self.index_h_time_with_charge],
+                                                                                   h_edges=self.bins[self.key_with_charge], divide_bin_width=self.divide_bin_width))
                 if not use_relative_error:
                     self.evts_to_fit["statistical_error_time"].append(
                         (self.evts_to_fit["h_time"+self.option_h_time][i][self.index_h_time]) ** 0.5 / np.max(
@@ -231,15 +265,11 @@ class FitWithComponent:
         if name_source == "Neutron":
             self.files_list_to_fit = glob.glob(path_data_predict+"predict_withpdgdep/predict_*.npz")
         else:
-            if not use_truth_time:
-                self.files_list_to_fit = glob.glob(
+            self.files_list_to_fit = glob.glob(
                     path_data_predict+f"predict_withpdgdep_{name_source}/predict_*.npz")
-            else:
-                self.files_list_to_fit = glob.glob(
-                path_data_predict+f"predict_withpdgdep_{name_source}/predict_*.npz")
         print("One of Loaded Files:\t", self.files_list_to_fit[0])
         if short_file_list:
-            self.files_list_to_fit = self.files_list_to_fit[:20]
+            self.files_list_to_fit = self.files_list_to_fit[:300]
 
     def GetHistExpected(self, v_n):
         v_time_parameters = v_n[self.n_amplitude_fit_parameters:self.n_amplitude_fit_parameters+self.n_time_parameters]
@@ -288,28 +318,38 @@ class FitWithComponent:
 
     def LoadDatToFit(self):
         check_data_loaded = True
-        f = np.load(self.files_list_to_fit[0],
-                    allow_pickle=True)
-        evts_0 = f["dir_events"].item()
-        print("Loaded Data Keys:\t", evts_0.keys())
-        evts = {}
-        for key in evts_0.keys():
-            if use_truth_time and (key == "PSD" or key == "PSD_with_charge"):
-                continue
-            evts[key] = []
-        for file in self.files_list_to_fit:
-            with np.load(file, allow_pickle=True) as f:
-                evts_load = f["dir_events"].item()
-                for key in evts_load.keys():
-                    if use_truth_time and (key == "PSD" or key == "PSD_with_charge"):
-                        continue
-                    evts[key].extend(evts_load[key])
-        for key in evts.keys():
-            try:
-                evts[key] = np.array(evts[key])
-            except Exception:
-                continue
-        self.evts_to_fit = evts
+        if not self.load_uniform_R_lepton_data:
+            f = np.load(self.files_list_to_fit[0],
+                        allow_pickle=True)
+            evts_0 = f["dir_events"].item()
+            print("Loaded Data Keys:\t", evts_0.keys())
+            evts = {}
+            for key in evts_0.keys():
+                if use_truth_time and (key == "PSD" or key == "PSD_with_charge"):
+                    continue
+                if not use_truth_time and (key == "h_time_with_charge_truth" or key == "h_time_truth"):
+                    continue
+                evts[key] = []
+            for file in self.files_list_to_fit:
+                with np.load(file, allow_pickle=True) as f:
+                    evts_load = f["dir_events"].item()
+                    for key in evts.keys():
+                        if use_truth_time and (key == "PSD" or key == "PSD_with_charge"):
+                            continue
+                        evts[key].extend(evts_load[key])
+            for key in evts.keys():
+                try:
+                    evts[key] = np.array(evts[key])
+                except Exception:
+                    continue
+            self.evts_to_fit = evts
+        else:
+            dir_name = os.path.dirname(self.files_list_to_fit[0])
+            if not center_fitting:
+                f = np.load(f"{dir_name}/uniform_predict.npz", allow_pickle=True)
+            else:
+                f = np.load(f"{dir_name}/center_predict.npz", allow_pickle=True)
+            self.evts_to_fit = f["dir_events"].item()
         self.entries = len(self.evts_to_fit["h_time"])
         if check_data_loaded:
             v_n_evts = []
@@ -323,6 +363,7 @@ class FitWithComponent:
                 exit(1)
             print("####################################################################")
         self.NormTimeProfileToFit()
+        self.GetVertexR()
 
         if plot_data_loaded:
             import sys
@@ -572,38 +613,101 @@ class FitWithComponent:
                 continue
             self.evts_to_fit[key] = np.array(self.evts_to_fit[key])[index_remain]
 
+    def ApplyEquenCut(self, Equen_uplimit:float, Equen_downlimit:float):
+        index_equen_cut = (Equen_downlimit<self.evts_to_fit["equen"]) & (self.evts_to_fit["equen"]<Equen_uplimit)
+        for key in self.evts_to_fit.keys():
+            try:
+                self.evts_to_fit[key] = self.evts_to_fit[key][index_equen_cut]
+            except:
+                continue
+        plt.figure()
+        print(self.evts_to_fit["equen"])
+        plt.hist(self.evts_to_fit["equen"])
+        plt.show()
+
     def SplitSamples(self, ratio_train:float=0.7):
         self.total_length_evts = len(self.evts_to_fit[list(self.evts_to_fit.keys())[0]])
         for key in self.evts_to_fit.keys():
             self.evts_to_fit_train[key] = self.evts_to_fit[key][:int(ratio_train*self.total_length_evts)]
             self.evts_to_fit_test[key] = self.evts_to_fit[key][int(ratio_train*self.total_length_evts):]
 
+    def GetVertexR(self):
+        self.evts_to_fit["R"] = np.sum((self.evts_to_fit["vertex"]/1000)**2, axis=1)**0.5
+
     def PrepareDataloader(self):
-        if self.training_with_charge:
-            self.trainset = CNNDataset(self.evts_to_fit_train["h_time_with_charge_norm"], self.evts_to_fit_train["ratio_lepton"])
-            self.testset = CNNDataset(self.evts_to_fit_test["h_time_with_charge_norm"], self.evts_to_fit_test["ratio_lepton"])
+        if self.training_combine:
+            if self.training_add_vertex:
+                if self.training_add_energy:
+                    self.trainset = CNNDataset(np.concatenate((self.evts_to_fit_train["h_time_norm"],self.evts_to_fit_train["h_time_with_charge_norm"],
+                                                               self.evts_to_fit_train["vertex"]/17.5/1000, self.evts_to_fit_train["equen"].reshape(-1, 1)/100), axis=1),
+                                                            self.evts_to_fit_train["ratio_lepton"])
+                    self.testset = CNNDataset(np.concatenate((self.evts_to_fit_test["h_time_norm"],self.evts_to_fit_test["h_time_with_charge_norm"],
+                                                              self.evts_to_fit_test["vertex"]/17.5/1000, self.evts_to_fit_test["equen"].reshape(-1,1)/100),axis=1),
+                                                                self.evts_to_fit_test["ratio_lepton"])
+                else:
+                    self.trainset = CNNDataset(np.concatenate(
+                        (self.evts_to_fit_train["h_time_norm"], self.evts_to_fit_train["h_time_with_charge_norm"],
+                         self.evts_to_fit_train["vertex"] / 17.5 / 1000), axis=1),
+                        self.evts_to_fit_train["ratio_lepton"])
+                    self.testset = CNNDataset(np.concatenate(
+                        (self.evts_to_fit_test["h_time_norm"], self.evts_to_fit_test["h_time_with_charge_norm"],
+                         self.evts_to_fit_test["vertex"] / 17.5 / 1000), axis=1),
+                        self.evts_to_fit_test["ratio_lepton"])
+                # self.trainset = CNNDataset(np.concatenate((self.evts_to_fit_train["h_time_norm"],self.evts_to_fit_train["h_time_with_charge_norm"],
+                #                                            self.evts_to_fit_train["R"].reshape(len(self.evts_to_fit_train['R']),1)/17.5/1000), axis=1),self.evts_to_fit_train["ratio_lepton"])
+                # self.testset = CNNDataset(np.concatenate((self.evts_to_fit_test["h_time_norm"],self.evts_to_fit_test["h_time_with_charge_norm"],
+                #                                           self.evts_to_fit_test["R"].reshape(len(self.evts_to_fit_test['R']),1)/17.5/1000),axis=1),self.evts_to_fit_test["ratio_lepton"])
+            else:
+                self.trainset = CNNDataset(np.concatenate((self.evts_to_fit_train["h_time_norm"],self.evts_to_fit_train["h_time_with_charge_norm"]), axis=1),
+                                           self.evts_to_fit_train["ratio_lepton"])
+                self.testset = CNNDataset(np.concatenate((self.evts_to_fit_test["h_time_norm"],self.evts_to_fit_test["h_time_with_charge_norm"] ),axis=1),
+                                          self.evts_to_fit_test["ratio_lepton"])
         else:
-            self.trainset = CNNDataset(self.evts_to_fit_train["h_time_norm"], self.evts_to_fit_train["ratio_lepton"])
-            self.testset = CNNDataset(self.evts_to_fit_test["h_time_norm"], self.evts_to_fit_test["ratio_lepton"])
+            if self.training_with_charge:
+                self.trainset = CNNDataset(self.evts_to_fit_train["h_time_with_charge_norm"], self.evts_to_fit_train["ratio_lepton"])
+                self.testset = CNNDataset(self.evts_to_fit_test["h_time_with_charge_norm"], self.evts_to_fit_test["ratio_lepton"])
+            else:
+                self.trainset = CNNDataset(self.evts_to_fit_train["h_time_norm"], self.evts_to_fit_train["ratio_lepton"])
+                self.testset = CNNDataset(self.evts_to_fit_test["h_time_norm"], self.evts_to_fit_test["ratio_lepton"])
         self.trainloader = DataLoader(self.trainset, batch_size=30, shuffle=True)
         self.testloader = DataLoader(self.testset, batch_size=10, shuffle=False)
         self.evts_to_fit_train.clear()
-        self.evts_to_fit_test.clear()
+        # self.evts_to_fit_test.clear()
+
+    def SetModel(self, model_mode, validate_mode=False):
+        if not validate_mode:
+            self.length_input_train = len(self.trainset[0][0][0])
+        else:
+            self.length_input_train = len(self.validateset[0][0][0])
+        if model_mode == 0:
+            self.model = CNN1D()
+        elif model_mode == 1:
+            self.model = CNN1D_2()
+        elif model_mode == 2:
+            self.model = Net()
+        elif model_mode == 3:
+            self.model = LinearNet(self.length_input_train)
+
+        self.criterion = nn.MSELoss()
+        self.model = self.model.to(device)
+        self.optimizer = optim.Adam(self.model.parameters(), lr=0.00002)
 
 
     def TrainNN(self):
-        epochs = 20
-        running_loss=0
-        self.criterion = nn.MSELoss()
-        self.model = self.model.to(device)
-        self.optimizer = optim.Adam(self.model.parameters(), lr=0.00005)
-        self.path_model = f"./model_CNN1D{self.model_label}/"
         self.PrepareDataloader()
+        self.SetModel(model_mode=self.model_mode)
+        epochs = 15
+        running_loss=0
+        self.path_model = f"./model_CNN1D{self.model_label}/"
         self.v_train_loss = []
         self.v_test_loss = []
+        print_net_structure = True
         length_train = len(self.trainloader)
         for epoch in range(epochs):
             for time_profile, ratio_lepton in self.trainloader:
+                if print_net_structure:
+                    self.VisulizeNetwork(input_size=time_profile.shape)
+                    print_net_structure = False
                 time_profile, ratio_lepton = time_profile.to(device), ratio_lepton.to(device)
                 #-----------------Forward Pass----------------------
                 output=self.model(time_profile).view((-1))
@@ -615,9 +719,10 @@ class FitWithComponent:
                 self.optimizer.step()
 
                 running_loss+=loss.item()
-            # print("########################")
-            # print(f"predict:\t", output)
-            # print(f"truth:\t", ratio_lepton.detach().cpu().numpy())
+                # print("########################")
+                # print(f"predict:\t", output)
+                # print(f"truth:\t", ratio_lepton.detach().cpu().numpy())
+
             # -----------------Log-------------------------------
             self.v_train_loss.append(running_loss/length_train)
             print("======> epoch: {}/{}, Loss:{}".format(epoch,epochs,self.v_train_loss[-1]))
@@ -635,13 +740,17 @@ class FitWithComponent:
         state = {"net": self.model.state_dict()}
         torch.save(state, self.path_model+"model_0.t7")
 
-    def TestNN(self):
+    def TestNN(self, validate_mode=False):
         self.model.eval()
-        self.v_output_predict = []
-        self.v_truth = []
+        v_output_predict = []
+        v_truth = []
+        if validate_mode:
+            data_loader = self.validateset
+        else:
+            data_loader = self.testset
         with torch.no_grad():
             running_loss = 0
-            for time_profile, ratio_lepton in self.testloader:
+            for time_profile, ratio_lepton in data_loader:
                 time_profile, ratio_lepton = time_profile.to(device), ratio_lepton.to(device)
                 output = self.model(time_profile).view((-1))
                 loss=self.criterion(output,ratio_lepton)
@@ -652,10 +761,20 @@ class FitWithComponent:
                 # print("########################")
                 # print(f"predict:\t", output)
                 # print(f"truth:\t", ratio_lepton)
-                self.v_output_predict+=list(output)
-                self.v_truth+=list(ratio_lepton)
+                # print(f"truth:\t", type(float(ratio_lepton)))
+
+
+                v_output_predict+=list(output)
+                if ratio_lepton.shape == ():
+                    v_truth.append(float(ratio_lepton))
+                else:
+                    v_truth+=list(ratio_lepton)
             self.v_test_loss.append(running_loss/len(self.testloader))
             print("Test Loss:\t", self.v_test_loss[-1])
+        if not validate_mode:
+            self.v_output_predict = v_output_predict
+            self.v_truth = v_truth
+        return (v_output_predict, v_truth)
 
     def SaveOutput(self):
         self.dir_save = self.path_model
@@ -664,22 +783,96 @@ class FitWithComponent:
         np.savez(self.dir_save+"predict.npz", dir_events=self.evts_to_fit_test, predict=np.array(self.v_output_predict),
                  truth=np.array(self.v_truth), train_loss=self.v_train_loss, test_loss=self.v_test_loss)
 
+    def SetValidateDataset(self, dir_evts_validate:dict):
+        self.evts_to_fit_validate = dir_evts_validate
+        self.SetValidateDataLoader()
+
+    def SetPredictMode(self, name_file_mode:str):
+        if "combine" in name_file_mode:
+            self.training_combine = True
+        if "add_vertex" in name_file_mode:
+            self.training_add_vertex = True
+        if "add_energy" in name_file_mode:
+            self.training_add_energy = True
+
+    def SetValidateDataLoader(self):
+        self.SetBins()
+        self.option_h_time = ""
+        self.evts_to_fit_validate["h_time_norm"] = []
+        self.evts_to_fit_validate["h_time_with_charge_norm"] = []
+        for i in range(len(self.evts_to_fit_validate["h_time"])):
+            self.evts_to_fit_validate["h_time_norm"].append(
+                NormProfile(h_time=self.evts_to_fit_validate["h_time" + self.option_h_time][i][self.index_h_time],
+                            h_edges=self.bins[self.key_no_charge], divide_bin_width=self.divide_bin_width))
+            self.evts_to_fit_validate["h_time_with_charge_norm"].append(NormProfile(
+                    h_time=self.evts_to_fit_validate["h_time_with_charge" + self.option_h_time][i][self.index_h_time_with_charge],
+                    h_edges=self.bins[self.key_with_charge], divide_bin_width=self.divide_bin_width))
+
+        if self.training_combine:
+            if self.training_add_vertex:
+                if self.training_add_energy:
+                    self.validateset = CNNDataset(np.concatenate((self.evts_to_fit_validate["h_time_norm"],self.evts_to_fit_validate["h_time_with_charge_norm"],
+                                                               self.evts_to_fit_validate["vertex"]/17.5/1000, self.evts_to_fit_validate["equen"].reshape(-1, 1)/100), axis=1),
+                                                            self.evts_to_fit_validate["ratio_lepton"])
+                else:
+                    self.validateset = CNNDataset(np.concatenate(
+                        (self.evts_to_fit_validate["h_time_norm"], self.evts_to_fit_validate["h_time_with_charge_norm"],
+                         self.evts_to_fit_validate["vertex"] / 17.5 / 1000), axis=1),
+                        self.evts_to_fit_validate["ratio_lepton"])
+            else:
+                self.validateset = CNNDataset(np.concatenate((self.evts_to_fit_validate["h_time_norm"],self.evts_to_fit_validate["h_time_with_charge_norm"]), axis=1),
+                                           self.evts_to_fit_validate["ratio_lepton"])
+        else:
+            if self.training_with_charge:
+                self.validateset = CNNDataset(self.evts_to_fit_validate["h_time_with_charge_norm"], self.evts_to_fit_validate["ratio_lepton"])
+            else:
+                self.validateset = CNNDataset(self.evts_to_fit_validate["h_time_norm"], self.evts_to_fit_validate["ratio_lepton"])
+        self.validateloader = DataLoader(self.validateset, batch_size=30, shuffle=True)
+
+    def SetBins(self):
+        self.bins_before_cut[self.key_no_charge] = np.array(
+            [-19, -18, -17, -16, -15, -14, -13, -12, -11, -10, -9, -8, -7, -6, -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6,
+             7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 22, 24, 26, 28, 30, 32, 34, 36, 38, 40, 42, 44, 46,
+             48, 50, 52, 54, 56, 58, 60, 62, 66, 72, 80, 90, 102, 116, 132, 150, 170, 192, 216, 242, 270, 300, 332, 366,
+             402, 440, 480, 522, 566, 612, 660, 710, 762, 816])
+        self.bins_before_cut[self.key_with_charge] = self.bins_before_cut[self.key_no_charge]
+        self.index_h_time = GetAdjustBinsIndex(GetBinCenter(self.bins_before_cut[self.key_no_charge]), self.bin_start, self.bin_end)
+        self.index_h_time_with_charge = GetAdjustBinsIndex(GetBinCenter(self.bins_before_cut[self.key_with_charge]), self.bin_start,
+                                                       self.bin_end)
+        self.bins[self.key_no_charge] = self.bins_before_cut[self.key_no_charge][1:][self.index_h_time]
+        self.bins[self.key_with_charge] = self.bins_before_cut[self.key_with_charge][1:][self.index_h_time_with_charge]
+
+    def LoadModelAndPredict(self, name_file_model:str, model_mode=3):
+        self.SetPredictMode(name_file_model)
+        self.SetModel(model_mode, validate_mode=True)
+        self.model = self.model.to(device)
+        if device == "cuda":
+            checkpoint = torch.load(name_file_model)
+        else:
+            checkpoint = torch.load( name_file_model, map_location=torch.device("cpu") )
+        self.model.load_state_dict(checkpoint["net"])
+        return self.TestNN(validate_mode=True)
+
+    def VisulizeNetwork(self, input_size):
+        from torchsummary import summary
+        print("===> Input Size:\t", input_size)
+        summary(self.model, input_size=input_size)
 
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description='DSNB component fitter')
-    parser.add_argument("--model", "-m", type=int, help="which ML model to use", default=0 )
+    parser.add_argument("--model", "-m", type=int, help="which ML model to use", default=3 )
     args = parser.parse_args()
 
     plot_pdf = False
     check_poly_fit_pdf = False
     plot_time_to_fit = False
-    debug_short_file_list = False
+    debug_short_file_list = True
     plot_data_loaded = False
-    center_fitting = True
+    center_fitting = False
     fitting_with_charge = True
     name_center = "0_0_0"
-    use_truth_time = True
+    use_truth_time = False
     save_fit_result = True
     n_to_fit = -1
     least_square_method = True
@@ -722,8 +915,10 @@ if __name__ == "__main__":
     FLH.PlotPDFTimeProfile() if plot_pdf else 0
     FLH.TurnPDFIntoFunction()
 
-    # FLH.GetFileListToFit(name_source="Neutron", short_file_list=debug_short_file_list)
-    FLH.GetFileListToFit(name_source="neutron_0_0_0", short_file_list=debug_short_file_list)
+    if not center_fitting:
+        FLH.GetFileListToFit(name_source="Neutron", short_file_list=debug_short_file_list)
+    else:
+        FLH.GetFileListToFit(name_source="neutron_0_0_0", short_file_list=debug_short_file_list)
     # FLH.GetFileListToFit(name_source=f"{fitting_source}_0_0_0", short_file_list=debug_short_file_list)
 
     FLH.LoadDatToFit()
@@ -745,7 +940,10 @@ if __name__ == "__main__":
         FLH.PlotGammaRatioAndFit(n_to_fit=n_to_fit, name_file_to_save=f"./{fitting_source}_fitting_result.npz")
         plt.show()
     else:
-        FLH.UniformLeptonRatioDistribution()
+        if not FLH.load_uniform_R_lepton_data:
+            FLH.UniformLeptonRatioDistribution()
+        if FLH.training_with_equen_cut:
+            FLH.ApplyEquenCut(Equen_uplimit=30, Equen_downlimit=10)
         FLH.SplitSamples(ratio_train=0.95)
         FLH.TrainNN()
 

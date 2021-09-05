@@ -10,8 +10,10 @@ plt.style.use("/afs/ihep.ac.cn/users/l/luoxj/Style/Paper.mplstyle")
 
 from torch import nn
 import torch
+import torch.nn.functional as F
 
-class CNN1D(nn.Module):
+
+class CNN1D( nn.Module):
     def __init__(self):
         super(CNN1D, self).__init__()
         self.conv1 = nn.Sequential(
@@ -77,27 +79,27 @@ class CNN1D_2(nn.Module):
                       stride=1,  # filter step
                       padding=4,  # con2d出来的图片大小不变
                       ),
-            nn.LeakyReLU(),
+            # nn.LeakyReLU(),
             nn.MaxPool1d(kernel_size=2),
             # nn.BatchNorm1d(32)# 1x2采样，o
 
         )
         self.conv2 = nn.Sequential(nn.Conv1d(32, 64, 9, 1, 4),
-                                   nn.LeakyReLU(),
+                                   # nn.LeakyReLU(),
                                    nn.MaxPool1d(2),
                                    # nn.BatchNorm1d(64)
                                    )
 
         self.conv3 = nn.Sequential(nn.Conv1d(64, 128,  9, 1, 4),
-                                   nn.LeakyReLU(),
+                                   # nn.LeakyReLU(),
                                    nn.MaxPool1d(2),
                                    # nn.BatchNorm1d(128),
                                     nn.Conv1d(128, 256,  9, 1, 4),
-                                   nn.LeakyReLU(),
+                                   # nn.LeakyReLU(),
                                    nn.MaxPool1d(2),
                                    # nn.BatchNorm1d(256),
                                     nn.Conv1d( 256,512,  9, 1, 4),
-                                   nn.LeakyReLU(),
+                                   # nn.LeakyReLU(),
                                    nn.MaxPool1d(2),
                                    # nn.BatchNorm1d(512)
                                    )
@@ -122,3 +124,54 @@ class CNN1D_2(nn.Module):
         x = self.out(x)
         # x = self.out2(x)
         return x
+
+class Net(nn. Module):
+    def __init__(self):
+        super(Net, self).__init__()
+        self.conv1=nn.Conv1d(1,25,21, padding=10)
+        self.conv2=nn.Conv1d(25,20,17, padding=8)
+        self.conv3=nn.Conv1d(20,15,13, padding=6)
+        self.conv4=nn.Conv1d(15,10,9, padding=4)
+        self.conv5=nn.Conv1d(10,1,1)
+        self.fc1 = nn.Linear(66,1)
+        self.out = nn.Sigmoid()
+    def forward(self,x):
+        leaky_relu=nn.LeakyReLU(0.05)
+        drop_out=nn.Dropout(0.9)
+        # x=torch.unsqueeze(x,1)
+        x=leaky_relu(self.conv1(x))
+        # print(self.conv1.state_dict())
+        x=leaky_relu(self.conv2(x))
+        x=leaky_relu(self.conv3(x))
+        x=leaky_relu(self.conv4(x))
+        x=F.relu(self. conv5(x))
+        x = self.out(self.fc1(x))
+        # x=x.squeeze(1)
+        return x
+
+
+def LinearSeries(v_n_layers, with_leaky_relu=True, with_dropout=False):
+    linear_series = []
+    for n_layers_begin, n_layers_end in zip(v_n_layers[:-1], v_n_layers[1:]):
+        linear_series.append(nn.Linear(n_layers_begin, n_layers_end))
+        if with_leaky_relu:
+            linear_series.append(nn.LeakyReLU())
+        if with_dropout:
+            linear_series.append(nn.Dropout(0.7))
+    linear_series.append(nn.Sigmoid())
+    return nn.Sequential(*linear_series)
+
+
+class LinearNet(nn.Module):
+    def __init__(self, input_length:int):
+        super(LinearNet, self).__init__()
+        # v_n_layers = [66, 10000, 4000, 3000, 2000,1000, 500, 1]
+        # v_n_layers = [input_length, 1000,800, 400, 300, 200,100, 50, 1]
+        # v_n_layers = [input_length, 2000, 1600, 800, 600, 400,200, 100, 1]
+        v_n_layers = [input_length, 4000, 3200, 1600, 1200, 800,400, 200,100, 50, 1]
+        self.fc = LinearSeries(v_n_layers)
+    def forward(self, x):
+        # print(x.shape)
+        x = self.fc(x)
+        return x
+# It seems model 2 and 4 can get better performance

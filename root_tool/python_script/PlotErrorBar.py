@@ -24,3 +24,4 @@ def PLotDataWithErrorBar_numpy(h_data:np.ndarray, h_edges:np.ndarray,h_y_errors:
     bins_center=(h_edges[:-1]+h_edges[1:])/2
     bins_error= h_y_errors
     plt.errorbar(bins_center,h_data, xerr=bins_width, yerr=bins_error, marker="+",color="black", Ls="none", Label=label)
+

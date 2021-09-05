@@ -14,12 +14,18 @@ class GenDetsimScripts:
         self.template_detsim = ""
         self.debug_print = False
         self.i_added_sub_job=0
+
+        self.jobs_sub_option = ""
+        self.use_specific_memory = True
+        self.memory_to_specific = 4000
+        if self.use_specific_memory:
+            self.jobs_sub_option += f"-m {self.memory_to_specific}"
         self.template_sub_scripts = \
 """
 
 job={}
 chmod 755 $job
-hep_sub $job -e /dev/null -o /dev/null """
+hep_sub $job -e /dev/null -o /dev/null {}"""
         if short_jobs:
             self.template_sub_scripts += "-wt short"
 
@@ -27,9 +33,12 @@ hep_sub $job -e /dev/null -o /dev/null """
         self.template_detsim:str = template
 
     def GenDetsimScripts(self,v_momentum:np.ndarray=np.zeros(3), v_position:np.ndarray=np.zeros(3), name_particle:str="neutron", name_label:str="",
-                         name_dir_save="./"):
-        if not os.path.exists(name_dir_save):
-            os.makedirs(name_dir_save)
+                         name_dir_save="./", name_dir_save_data="./"):
+        if "junoeos01.ihep.ac.cn" in name_dir_save_data:
+            os.system("eos mkdir -p "+name_dir_save_data.split("root://junoeos01.ihep.ac.cn/")[-1])
+        else:
+            if not os.path.exists(name_dir_save_data):
+                os.makedirs(name_dir_save_data)
         p = np.sum(v_momentum**2)**0.5
         str_position = "--position "+" ".join([str(loc) for loc in v_position])
         str_momentum = "--momentums "+str(p)
@@ -41,7 +50,7 @@ hep_sub $job -e /dev/null -o /dev/null """
         else:
             name_job = f"{name_dir_save}job_{name_label}.sh"
             if not os.path.isdir(name_dir_save):
-                os.mkdir(name_dir_save)
+                os.makedirs(name_dir_save)
             with open(name_job, "w") as f:
                 f.write(self.template_detsim.format(self.options_add))
             self.AddJobToSubDetsimScript(name_dir_save=name_dir_save, name_job=name_job.split("/")[-1])
@@ -52,7 +61,7 @@ hep_sub $job -e /dev/null -o /dev/null """
         else:
             option = "a"
         with open(f"./sub.sh", option) as f:
-            f.write(self.template_sub_scripts.format(f"{name_dir_save}{name_job}"))
+            f.write(self.template_sub_scripts.format(f"{name_dir_save}{name_job}", self.jobs_sub_option))
         self.i_added_sub_job += 1
 
 
