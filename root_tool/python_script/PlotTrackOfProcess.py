@@ -97,20 +97,24 @@ class PlotTrackOfProcess:
 
 
     def PlotTrack(self,evtID_plot, brief_show=True, pdf=None, debug=False, threshold_track_length=10, print_track_info=False,
-                  show_p_direction=True, name_title=""):
+                  show_p_direction=True, name_title="", ax=None,only_plot_parent_particle=False, show_process_name=False):
         set_pdg = set()
         if brief_show:
             threshold_track_length_plot = threshold_track_length
         else:
             threshold_track_length_plot = 0
-        fig = plt.figure()
-        ax = fig.add_subplot(111, projection="3d")
+        if only_plot_parent_particle:
+            threshold_track_length_plot = 0 # only parentID=0 particle, we don't need to omit any particles
+        if ax == None:
+            fig = plt.figure()
+            ax = fig.add_subplot(111, projection="3d")
         ax.set_title(name_title)
         index_evtID_plot = (self.dir_tracks["evtID"] == evtID_plot)
-        # print(self.dir_tracks["Mu_Posx"][index_evtID_plot])
         if print_track_info:
             print("####################################################")
         for i in range(len(self.dir_tracks["Mu_Posx"][index_evtID_plot])):
+            if only_plot_parent_particle and self.dir_tracks["MuParentID"][index_evtID_plot][i]!=0 :
+                continue
             pdg = self.dir_tracks["pdgID"][index_evtID_plot][i]
             if pdg in self.list_continue_pdg:
                 continue
@@ -142,8 +146,12 @@ class PlotTrackOfProcess:
                 ax.set_zlabel("Z [ mm ]")
 
                 set_pdg.add(pdg)
-            if print_track_info:
-                print("pdg:\t", pdg, "\tmomentum:\t", p)
+                if print_track_info:
+                    if show_process_name:
+                        one_track_process_name = self.dir_tracks["MuCreateProcess"][index_evtID_plot][i]
+                        print("pdg:\t", pdg, "\tmomentum:\t", p, "\tcreated process:\t", one_track_process_name)
+                    else:
+                        print("pdg:\t", pdg, "\tmomentum:\t", p)
         if pdf != None and not debug:
             pdf.savefig()
         if not debug:
@@ -152,11 +160,12 @@ class PlotTrackOfProcess:
             plt.show()
         return set_pdg
 
-    def PlotTrackWithEntrySource(self, entry_source, brief_show=True, pdf=None, debug=False, threshold_track_length=10, print_track_info=False,show_p_direction=True):
+    def PlotTrackWithEntrySource(self, entry_source, brief_show=True, pdf=None, debug=False, threshold_track_length=10, print_track_info=False,show_p_direction=True,
+                                 ax=None,only_plot_parent_particle=False, show_process_name=False):
         evtID_to_plot = self.dir_evts["evtID"][entry_source]
         print("Edep:\t", self.dir_evts["edep"][entry_source], "---->")
         return self.PlotTrack(evtID_plot=evtID_to_plot, brief_show=brief_show, pdf=pdf, debug=debug, threshold_track_length=threshold_track_length, print_track_info=print_track_info,
-                              show_p_direction=show_p_direction)
+                              show_p_direction=show_p_direction, ax=ax,only_plot_parent_particle=only_plot_parent_particle, show_process_name=show_process_name)
 
     def PlotIntoPdf(self, n_pages=10, name_out_pdf="track_plot.pdf"):
         with PdfPages(name_out_pdf) as pdf:
@@ -276,10 +285,18 @@ class PlotTrackOfProcess:
                 dir_dE[pdg] = np.concatenate((dir_dE[pdg], one_track_dE))
                 dir_dE_quench[pdg] = np.concatenate((dir_dE_quench[pdg],one_track_dE_quench))
             if return_dE_ratio:
-                dE_sum += np.sum(one_track_dE)
+                if return_dE_quench:
+                    dE_sum += np.sum(one_track_dE_quench)
+                else:
+                    dE_sum += np.sum(one_track_dE)
         if return_dE_ratio:
-            for key in dir_dE.keys():
-                dir_dE[key] = dir_dE[key] /dE_sum
+            if return_dE_quench:
+                for key in dir_dE_quench.keys():
+                    dir_dE[key] = dir_dE_quench[key] /dE_sum
+            else:
+                for key in dir_dE.keys():
+                    dir_dE[key] = dir_dE[key] / dE_sum
+        # if return_dE_ratio==True, dir_dE is the ratio of dE contribution!!!!!!!!!
         if return_dE_quench:
             return (dir_dE_dx, dir_dE, dir_dE_quench)
         else:
@@ -316,29 +333,40 @@ class PlotTrackOfProcess:
             plt.hist(dir_diff_particle_dE_dx[pdg], bins=bins, histtype="step", label=pdg)
         plt.legend()
 
-    def Get_dE_dx_ByLoading(self, entry_source):
+    def Get_dE_dx_ByLoading(self, entry_source,return_dE_quench=False):
         index_evtID_specific = (self.dir_tracks["evtID"] == self.dir_evts["evtID"][entry_source])
         v_dE_dx = []
         v_dE = []
+        v_dE_quench = []
         for i in range(len(self.dir_tracks["Mu_dE"][index_evtID_specific])):
             one_track_dE = self.dir_tracks["Mu_dE"][index_evtID_specific][i]
             one_track_dx = self.dir_tracks["Mu_dx"][index_evtID_specific][i]
             one_track_dE_dx = np.nan_to_num(one_track_dE/one_track_dx)
             v_dE_dx.append(one_track_dE_dx)
             v_dE.append(one_track_dE)
-        return (np.concatenate(v_dE_dx), np.concatenate(v_dE))
+            if return_dE_quench:
+                one_track_dE_quench = self.dir_tracks["Mu_dE_quench"][index_evtID_specific][i]
+                v_dE_quench.append(one_track_dE_quench)
+        if return_dE_quench:
+            return (np.concatenate(v_dE_dx), np.concatenate(v_dE), np.concatenate(v_dE_quench))
+        else:
+            return (np.concatenate(v_dE_dx), np.concatenate(v_dE))
 
-    def Get_Average_dE_dx(self, entry_source):
+    def Get_Average_dE_dx(self, entry_source, times_quench_factor=False):
         check_calculation = False
-        v_dE_dx, v_dE = self.Get_dE_dx_ByLoading(entry_source)
-        dE_dx_average = np.sum(v_dE_dx*v_dE)/np.sum(v_dE)
+        if times_quench_factor:
+            (v_dE_dx, v_dE, v_dE_quench) = self.Get_dE_dx_ByLoading(entry_source, return_dE_quench=True)
+            dE_dx_average = np.sum(v_dE_dx*v_dE_quench)/np.sum(v_dE_quench)
+        else:
+            (v_dE_dx, v_dE) = self.Get_dE_dx_ByLoading(entry_source)
+            dE_dx_average = np.sum(v_dE_dx*v_dE)/np.sum(v_dE)
         if check_calculation:
             print("dE/dx:\t",v_dE_dx)
             print("dE:\t",v_dE)
             print("dE/dx_average:\t",dE_dx_average)
         return dE_dx_average
 
-    def Get_v_Average_dE_dx(self, entries_to_get=None):
+    def Get_v_Average_dE_dx(self, entries_to_get=None, times_quench_factor=False):
         if entries_to_get == None:
             entries_to_get = self.GetTotalEntries()
         else:
@@ -348,12 +376,12 @@ class PlotTrackOfProcess:
 
         v_average_dE_dx = []
         for entry in tqdm.trange(entries_to_get):
-            v_average_dE_dx.append(self.Get_Average_dE_dx(entry))
+            v_average_dE_dx.append(self.Get_Average_dE_dx(entry, times_quench_factor=times_quench_factor))
         return np.array(v_average_dE_dx)
 
     def Print_dE_dx_Contribution(self,entry_source):
-        (dir_dE_dx, dir_dE_ratio) = self.Get_dE_dx_ByLoading_into_dir(entry_source, merge_same_pdg=True, return_dE_ratio=True)
-        (_, dir_dE) = self.Get_dE_dx_ByLoading_into_dir(entry_source, merge_same_pdg=True, return_dE_ratio=False)
+        (dir_dE_dx, dir_dE_ratio, dir_dE_quench) = self.Get_dE_dx_ByLoading_into_dir(entry_source, merge_same_pdg=True, return_dE_ratio=True,
+                                                                      return_dE_quench=True)
         print("\nAverage dE/dx:\t",self.Get_Average_dE_dx(entry_source))
         print("Equen:\t", self.GetEquen(entry_source,filter_n_capture=True),"\n")
         print("#######################################")
@@ -361,7 +389,7 @@ class PlotTrackOfProcess:
             print(key, " --->")
             print("dE/dx:\t", dir_dE_dx[key])
             print("dE_ratio:", dir_dE_ratio[key])
-            print("dE:\t", dir_dE[key])
+            print("dE:\t", dir_dE_quench [key])
             print(f"Contributed dE/dx({key}):\t", np.sum(dir_dE_dx[key]*dir_dE_ratio[key]))
             print(f"Total Ratio({key})", np.sum(dir_dE_ratio[key]),"\n")
         print("#######################################")
