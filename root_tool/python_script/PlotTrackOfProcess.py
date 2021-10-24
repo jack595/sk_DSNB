@@ -36,6 +36,8 @@ class PlotTrackOfProcess:
                     self.dir_tracks[key] = np.array(self.tree_track[key])
                 self.set_evID = set(self.dir_tracks["evtID"])
                 self.v_equen = np.array(self.tree_depTree["QEnergyDeposit"])
+                self.v_edep = np.array(self.tree_depTree["EnergyDeposit"])
+                self.v_evtID_depTree = np.array(self.tree_depTree["evtID"])
 
                 self.dir_evts = {}
                 for key in self.tree_evt.keys():
@@ -44,6 +46,7 @@ class PlotTrackOfProcess:
                 self.name_file_last = name_file
         else:
             pass
+
 
     def GetTotalEntries(self):
         return len(self.dir_evts["evtID"])
@@ -54,6 +57,21 @@ class PlotTrackOfProcess:
         else:
             return np.sum(self.v_equen[entry_source])
 
+    def GetEquenByEvtID(self, evtID, filter_n_capture=False):
+        entry_source = np.where(self.v_evtID_depTree==evtID)[0]
+        if filter_n_capture:
+            return np.sum(self.v_equen[entry_source][:-1])
+        else:
+            return np.sum(self.v_equen[entry_source])
+
+    def GetEdepFromEvt(self, entry_source):
+        return self.dir_evts["edep"][entry_source]
+    def GetEdep(self, entry_source, filter_n_capture=False):
+        if filter_n_capture:
+            return np.sum(self.v_edep[entry_source][:-1])
+        else:
+            return np.sum(self.v_edep[entry_source])
+
     def Get_v_Equen(self, filter_n_capture=False):
         self.v_equen_without_n_capture = []
         if filter_n_capture:
@@ -63,6 +81,19 @@ class PlotTrackOfProcess:
             for i in range(len(self.v_equen)):
                 self.v_equen_without_n_capture.append(np.sum(self.v_equen[i]))
         return np.array(self.v_equen_without_n_capture)
+
+    def GetEvtIDOfDepTree(self):
+        return self.v_evtID_depTree
+
+    def Get_v_Edep(self, filter_n_capture=False):
+        self.v_edep_without_n_capture = []
+        if filter_n_capture:
+            for i in range(len(self.v_edep)):
+                self.v_edep_without_n_capture.append(np.sum(self.v_edep[i][:-1]))
+        else:
+            for i in range(len(self.v_edep)):
+                self.v_edep_without_n_capture.append(np.sum(self.v_edep[i]))
+        return np.array(self.v_edep_without_n_capture)
 
     def PlotEquen(self, title="",bins=None, filter_n_capture=False, name_fig_save:str=None):
         check_filter_n_capture = False
@@ -95,9 +126,22 @@ class PlotTrackOfProcess:
             set_pdg.add(pdg)
         return set_pdg
 
+    def GetCertainPDGEkFromOneEvent(self, evtID:int, pdg:int, only_create_process=None):
+        index_evtID = (self.dir_tracks["evtID"] == evtID)
+        index_pdg_certain_evtID = ( (self.dir_tracks["pdgID"][index_evtID]==pdg) &
+                                    (self.dir_tracks["MuCreateProcess"][index_evtID]==only_create_process) )
+        mass = self.pdg_mass_map.PDGToMass(pdg)
+        v_Ek_return = []
+        for i in range(len(self.dir_tracks["Mu_Px"][index_evtID][index_pdg_certain_evtID])):
+            one_track_px = self.dir_tracks["Mu_Px"][index_evtID][index_pdg_certain_evtID][i]
+            one_track_py = self.dir_tracks["Mu_Py"][index_evtID][index_pdg_certain_evtID][i]
+            one_track_pz = self.dir_tracks["Mu_Pz"][index_evtID][index_pdg_certain_evtID][i]
+            p_square = (one_track_px[0] ** 2 + one_track_py[0] ** 2 + one_track_pz[0] ** 2)
+            v_Ek_return.append(GetKineticE(p_square, mass))
+        return np.array(v_Ek_return)
 
     def PlotTrack(self,evtID_plot, brief_show=True, pdf=None, debug=False, threshold_track_length=10, print_track_info=False,
-                  show_p_direction=True, name_title="", ax=None,only_plot_parent_particle=False, show_process_name=False):
+                  show_p_direction=True, name_title="", ax=None,only_plot_parent_particle=False, show_process_name=False, plot_p_MeV=False):
         set_pdg = set()
         if brief_show:
             threshold_track_length_plot = threshold_track_length
@@ -138,9 +182,12 @@ class PlotTrackOfProcess:
                           color=color, ls="--", linewidth=2)
                 # add_arrow(line, color=color)
                 index_middle = int(len(one_track_x) / 2)
-                ax.text(one_track_x[index_middle], one_track_y[index_middle], one_track_z[index_middle],
-                        pdg, color=color)
-                # ax.text(one_track_x[index_middle], one_track_y[index_middle], one_track_z[index_middle]-200,"{:.1f}".format(p),color=color)
+                if plot_p_MeV:
+                    ax.text(one_track_x[index_middle], one_track_y[index_middle], one_track_z[index_middle],
+                        f"{pdg}({1000*GetKineticE(p**2, self.pdg_mass_map.PDGToMass(pdg)):.1f}keV)", color=color)
+                else:
+                    ax.text(one_track_x[index_middle], one_track_y[index_middle], one_track_z[index_middle],
+                            f"{pdg}", color=color)
                 ax.set_xlabel("X [ mm ]")
                 ax.set_ylabel("Y [ mm ]")
                 ax.set_zlabel("Z [ mm ]")
@@ -149,7 +196,7 @@ class PlotTrackOfProcess:
                 if print_track_info:
                     if show_process_name:
                         one_track_process_name = self.dir_tracks["MuCreateProcess"][index_evtID_plot][i]
-                        print("pdg:\t", pdg, "\tmomentum:\t", p, "\tcreated process:\t", one_track_process_name)
+                        print("pdg:\t", pdg, "\tmomentum:\t", p, "\tcreated process:\t", one_track_process_name,"\t, l_track:\t",l_track)
                     else:
                         print("pdg:\t", pdg, "\tmomentum:\t", p)
         if pdf != None and not debug:
@@ -161,11 +208,17 @@ class PlotTrackOfProcess:
         return set_pdg
 
     def PlotTrackWithEntrySource(self, entry_source, brief_show=True, pdf=None, debug=False, threshold_track_length=10, print_track_info=False,show_p_direction=True,
-                                 ax=None,only_plot_parent_particle=False, show_process_name=False):
+                                 ax=None,only_plot_parent_particle=False, show_process_name=False,plot_p_MeV=False):
         evtID_to_plot = self.dir_evts["evtID"][entry_source]
         print("Edep:\t", self.dir_evts["edep"][entry_source], "---->")
         return self.PlotTrack(evtID_plot=evtID_to_plot, brief_show=brief_show, pdf=pdf, debug=debug, threshold_track_length=threshold_track_length, print_track_info=print_track_info,
-                              show_p_direction=show_p_direction, ax=ax,only_plot_parent_particle=only_plot_parent_particle, show_process_name=show_process_name)
+                              show_p_direction=show_p_direction, ax=ax,only_plot_parent_particle=only_plot_parent_particle, show_process_name=show_process_name,plot_p_MeV=plot_p_MeV)
+
+    def GetProcessNameWithEntrySource(self,entry_source):
+        evtID_to_plot = self.dir_evts["evtID"][entry_source]
+        index_evtID_plot = (self.dir_tracks["evtID"] == evtID_to_plot)
+        one_track_process_name = self.dir_tracks["MuCreateProcess"][index_evtID_plot]
+        return one_track_process_name
 
     def PlotIntoPdf(self, n_pages=10, name_out_pdf="track_plot.pdf"):
         with PdfPages(name_out_pdf) as pdf:
@@ -356,10 +409,12 @@ class PlotTrackOfProcess:
         check_calculation = False
         if times_quench_factor:
             (v_dE_dx, v_dE, v_dE_quench) = self.Get_dE_dx_ByLoading(entry_source, return_dE_quench=True)
-            dE_dx_average = np.sum(v_dE_dx*v_dE_quench)/np.sum(v_dE_quench)
+            sum_dE_quench = np.sum(v_dE_quench)
+            dE_dx_average = np.sum(v_dE_dx*v_dE_quench)/sum_dE_quench
         else:
             (v_dE_dx, v_dE) = self.Get_dE_dx_ByLoading(entry_source)
-            dE_dx_average = np.sum(v_dE_dx*v_dE)/np.sum(v_dE)
+            sum_dE = np.sum(v_dE)
+            dE_dx_average = np.sum(v_dE_dx*v_dE)/sum_dE
         if check_calculation:
             print("dE/dx:\t",v_dE_dx)
             print("dE:\t",v_dE)
@@ -382,7 +437,7 @@ class PlotTrackOfProcess:
     def Print_dE_dx_Contribution(self,entry_source):
         (dir_dE_dx, dir_dE_ratio, dir_dE_quench) = self.Get_dE_dx_ByLoading_into_dir(entry_source, merge_same_pdg=True, return_dE_ratio=True,
                                                                       return_dE_quench=True)
-        print("\nAverage dE/dx:\t",self.Get_Average_dE_dx(entry_source))
+        print("\nAverage dE/dx:\t",self.Get_Average_dE_dx(entry_source, times_quench_factor=True))
         print("Equen:\t", self.GetEquen(entry_source,filter_n_capture=True),"\n")
         print("#######################################")
         for key in dir_dE_dx.keys():

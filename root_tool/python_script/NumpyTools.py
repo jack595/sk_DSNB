@@ -5,6 +5,9 @@
 # @File: NumpyTools.py
 import matplotlib.pylab as plt
 import numpy as np
+import random
+from copy import copy
+from LoadMultiFiles import MergeEventsDictionary
 
 plt.style.use("/afs/ihep.ac.cn/users/l/luoxj/Style/Paper.mplstyle")
 def ReBin(v:np.ndarray):
@@ -27,6 +30,59 @@ def AlignRisingEdge(v_to_align:np.ndarray, threshold:float, i_loc_aligned=10):
         i_append = -i_over_threshold
         v_return = np.concatenate((np.zeros(i_append), v_to_align))[:len(v_to_align)]
     return v_return
+
+def Replace( array_to_replace, dir_map_to_replace:dict=None):
+    if dir_map_to_replace is None:
+        dir_map_to_replace = {"alpha":0, "e-":1}
+    replacer = dir_map_to_replace.get
+    return np.array([replacer(item, item) for item in array_to_replace])
+
+def AlignEvents(v_dict):
+    """
+
+    :param v_dict: list for events dictionaries, whose each item should have the same length
+    we will make the input dictionaries got the same length,
+    :return: the dataset have been cut off, which might be useful in testing stage
+    """
+    one_key = list(v_dict[0].keys())[0]
+    n_events_to_align = len(v_dict[0][one_key])
+    for dir in v_dict[1:]:
+        if n_events_to_align > len(dir[one_key]):
+            n_events_to_align = len(dir[one_key])
+
+    # Align events dict
+    dir_cut_off = {}
+    for dir in v_dict:
+        for key in dir.keys():
+            if len(dir[key]) > n_events_to_align:
+                if key not in dir_cut_off:
+                    dir_cut_off[key] = copy(dir[key][n_events_to_align:])
+                else:
+                    dir_cut_off[key] =  MergeEventsDictionary([dir_cut_off[key], copy(dir[key][n_events_to_align:])])
+            dir[key] = dir[key][:n_events_to_align]
+    return (n_events_to_align,dir_cut_off)
+
+def SplitEventsDict(dir_events:dict, ratio_to_split_train:float=0.5):
+    one_key = list(dir_events.keys())[0]
+    n_events = len(dir_events[one_key])
+    n_events_for_train = int(n_events*ratio_to_split_train)
+    dir_events_train = {}
+    dir_events_test = {}
+    for key in dir_events.keys():
+        dir_events_train[key] = dir_events[key][:n_events_for_train]
+        dir_events_test[key] = dir_events[key][n_events_for_train:]
+    return dir_events_train, dir_events_test
+
+def ShuffleDataset(dir_events:dict):
+    n_events = len(dir_events[list(dir_events.keys())[0]])
+
+    # Shuffle Events
+    index_shuffle = random.shuffle(np.arange(n_events))
+    for key in dir_events.keys():
+        dir_events[key] = dir_events[key][index_shuffle][0]
+
+
+
 
 if __name__ == '__main__':
     # Test AlignRisingEdge
