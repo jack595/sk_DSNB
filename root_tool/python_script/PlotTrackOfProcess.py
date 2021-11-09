@@ -8,10 +8,12 @@ import numpy as np
 import uproot4 as up
 from matplotlib.backends.backend_pdf import PdfPages
 import sys
+from PmtIDMap import PMTIDMap
 from copy import copy
 import tqdm
 sys.path.append("/afs/ihep.ac.cn/users/l/luoxj/root_tool/python_script/")
 from GetPhysicsProperty import GetKineticE, PDGMassMap
+import concurrent.futures
 
 plt.style.use("/afs/ihep.ac.cn/users/l/luoxj/Style/Paper.mplstyle")
 
@@ -24,20 +26,26 @@ class PlotTrackOfProcess:
         self.pdg_mass_map.GetBaseMass()
         self.list_continue_pdg = [12, -12, 14, -14]
         self.name_file_last = ""
+        self.pmt_map = None
+        self.v_hittime_certain_pmt = []
 
     def SetDataset(self, name_file:str, key_tree="mu_tracking"):
         if self.name_file_last != name_file:
             with up.open(name_file) as self.f:
                 self.tree_track = self.f[key_tree]
                 self.tree_evt = self.f["evt"]
-                self.tree_depTree = self.f["depTree"]
                 self.dir_tracks = {}
                 for key in self.tree_track.keys():
                     self.dir_tracks[key] = np.array(self.tree_track[key])
                 self.set_evID = set(self.dir_tracks["evtID"])
-                self.v_equen = np.array(self.tree_depTree["QEnergyDeposit"])
-                self.v_edep = np.array(self.tree_depTree["EnergyDeposit"])
-                self.v_evtID_depTree = np.array(self.tree_depTree["evtID"])
+                try:
+                    self.tree_depTree = self.f["depTree"]
+                    self.v_equen = np.array(self.tree_depTree["QEnergyDeposit"])
+                    self.v_edep = np.array(self.tree_depTree["EnergyDeposit"])
+                    self.v_evtID_depTree = np.array(self.tree_depTree["evtID"])
+                except :
+                    print("Cannot find 'depTree' in root file, so we pass this,GetEquen() and GetEdep() cannot be used!")
+                    pass
 
                 self.dir_evts = {}
                 for key in self.tree_evt.keys():
@@ -47,6 +55,11 @@ class PlotTrackOfProcess:
         else:
             pass
 
+    def SetPMTMap(self, path_map_file:str):
+        self.pmt_map = PMTIDMap(path_map_file)
+
+    def ResetArrayHittimeCertainPMT(self):
+        self.v_hittime_certain_pmt = []
 
     def GetTotalEntries(self):
         return len(self.dir_evts["evtID"])
@@ -140,8 +153,64 @@ class PlotTrackOfProcess:
             v_Ek_return.append(GetKineticE(p_square, mass))
         return np.array(v_Ek_return)
 
+    @staticmethod
+    def JudgeSingleOpticlaTrack_HitThePMT(pdg, one_track_x, one_track_y, one_track_z, xyz_pmt,
+                                            R_pmt=1000):
+        if pdg != 20022:  # Only deal with optical photons
+            return False
+
+        R_exitPointToPMT = np.sum(
+            (np.array([one_track_x[-1], one_track_y[-1], one_track_z[-1]]) - xyz_pmt) ** 2) ** 0.5
+
+        if R_exitPointToPMT > R_pmt:  # mm
+            return False
+        else:
+            return True
+
+    def PlotOpticalTrack_HitCertainPMT(self, evtID, pmtID=1, fig=None,ax=None, name_title=""):
+        # Check PMT map
+        if self.pmt_map is None:
+            print("You should set pmt map( PMTID->xyz ),by using self.SetPMTMap(path_map_file)")
+            exit(-1)
+        self.xyz_pmt = self.pmt_map.idToXYZ(pmtID)
+        if ax == None:
+            fig = plt.figure()
+            ax = fig.add_subplot(111, projection="3d")
+        ax.set_title(name_title)
+        index_evtID_plot = (self.dir_tracks["evtID"] == evtID)
+
+        list_evtID = np.where(index_evtID_plot == True)[0]
+        tracks_evtID_pdg = self.dir_tracks["pdgID"][list_evtID]
+        tracks_evtID_x = self.dir_tracks["Mu_Posx"][list_evtID]
+        tracks_evtID_y = self.dir_tracks["Mu_Posy"][list_evtID]
+        tracks_evtID_z = self.dir_tracks["Mu_Posz"][list_evtID]
+        tracks_evtID_t = self.dir_tracks["Mu_Time"][list_evtID]
+
+        with concurrent.futures.ProcessPoolExecutor() as executor:
+            v_index_hit_the_pmt = executor.map(self.JudgeSingleOpticlaTrack_HitThePMT, tracks_evtID_pdg,tracks_evtID_x,
+                         tracks_evtID_y, tracks_evtID_z,[self.xyz_pmt]*len(tracks_evtID_x))
+        v_index_hit_the_pmt = np.array(list(v_index_hit_the_pmt))
+
+        for i in np.where(v_index_hit_the_pmt)[0]:
+            one_track_t = tracks_evtID_t[i]
+            self.v_hittime_certain_pmt.append(one_track_t[-1] - one_track_t[0])
+            color = next(ax._get_lines.prop_cycler)['color']
+            ax.plot(tracks_evtID_x[i], tracks_evtID_y[i], tracks_evtID_z[i], color=color, label=f"{self.v_hittime_certain_pmt[-1]:.0f} ns")
+
+        fig.tight_layout()
+        fig.subplots_adjust(right=0.8)
+        ax.legend(loc='center left', bbox_to_anchor=(1.07, 0.5), fontsize=15)
+        ax.set_xlabel("X [ mm ]", linespacing=5)
+        ax.set_ylabel("Y [ mm ]", linespacing=5)
+        ax.set_zlabel("Z [ mm ]", linespacing=5)
+        ax.dist = 10
+
+        self.v_index_hit_the_pmt = np.array(v_index_hit_the_pmt)
+
+
     def PlotTrack(self,evtID_plot, brief_show=True, pdf=None, debug=False, threshold_track_length=10, print_track_info=False,
-                  show_p_direction=True, name_title="", ax=None,only_plot_parent_particle=False, show_process_name=False, plot_p_MeV=False):
+                  show_p_direction=True, name_title="", ax=None,only_plot_parent_particle=False, show_process_name=False, plot_p_MeV=False,
+                  n_track_to_plot=-1):
         set_pdg = set()
         if brief_show:
             threshold_track_length_plot = threshold_track_length
@@ -157,6 +226,8 @@ class PlotTrackOfProcess:
         if print_track_info:
             print("####################################################")
         for i in range(len(self.dir_tracks["Mu_Posx"][index_evtID_plot])):
+            if n_track_to_plot!=-1 and i>n_track_to_plot:
+                break
             if only_plot_parent_particle and self.dir_tracks["MuParentID"][index_evtID_plot][i]!=0 :
                 continue
             pdg = self.dir_tracks["pdgID"][index_evtID_plot][i]
@@ -207,12 +278,10 @@ class PlotTrackOfProcess:
             plt.show()
         return set_pdg
 
-    def PlotTrackWithEntrySource(self, entry_source, brief_show=True, pdf=None, debug=False, threshold_track_length=10, print_track_info=False,show_p_direction=True,
-                                 ax=None,only_plot_parent_particle=False, show_process_name=False,plot_p_MeV=False):
+    def PlotTrackWithEntrySource(self, entry_source, *args,**kwargs):
         evtID_to_plot = self.dir_evts["evtID"][entry_source]
         print("Edep:\t", self.dir_evts["edep"][entry_source], "---->")
-        return self.PlotTrack(evtID_plot=evtID_to_plot, brief_show=brief_show, pdf=pdf, debug=debug, threshold_track_length=threshold_track_length, print_track_info=print_track_info,
-                              show_p_direction=show_p_direction, ax=ax,only_plot_parent_particle=only_plot_parent_particle, show_process_name=show_process_name,plot_p_MeV=plot_p_MeV)
+        return self.PlotTrack(evtID_plot=evtID_to_plot, *args,**kwargs)
 
     def GetProcessNameWithEntrySource(self,entry_source):
         evtID_to_plot = self.dir_evts["evtID"][entry_source]
