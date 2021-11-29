@@ -83,7 +83,6 @@ def ShuffleDataset(dir_events:dict):
 
 
 
-
 if __name__ == '__main__':
     # Test AlignRisingEdge
     h_time = np.array([0,0,0,1,3,5,6,7,15,20,16,14,12,10,9,7,5,0,0])

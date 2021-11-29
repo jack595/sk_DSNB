@@ -9,6 +9,8 @@ from copy import copy
 import uproot4 as up
 from collections import Counter
 import tqdm
+import subprocess
+import os
 def LoadMultiFiles(name_files:str="predict_*.npz", key_in_file:str="dir_events",n_files_to_load=-1,
                    whether_use_filter=False):
     files_list = glob.glob(name_files)
@@ -205,9 +207,26 @@ def LoadFileListUprootOptimized(list_files,list_corresponding_keys, name_branch,
     n_single_file = Counter(v_is_one_file)[True]
     print("Single File List:\t", list_files[v_is_one_file])
     with concurrent.futures.ProcessPoolExecutor() as executor:
-        evts_load = executor.map(LoadOneFileUproot, list_files[v_is_one_file], [name_branch]*n_single_file, [list_branch_filter]*n_single_file, [False]*n_single_file )
+        # -------------For duplicate key, we need to return list so that we can adjoin the dict_events-----
+        counter_key = Counter(list_corresponding_keys)
+        v_duplicate_keys = [key for key,count in counter_key.items() if count >1]
+        v_whether_return_list = np.array([False]*n_single_file)
+        for key in v_duplicate_keys:
+            v_whether_return_list = v_whether_return_list | (list_corresponding_keys==key)
+        #------------------------------------------------------
+
+        evts_load = executor.map(LoadOneFileUproot, list_files[v_is_one_file], [name_branch]*n_single_file, [list_branch_filter]*n_single_file, v_whether_return_list )
         for evt_load, key_in_dict,name_file in zip(evts_load, list_corresponding_keys[v_is_one_file],list_files[v_is_one_file]):
-            dir_return_diff_file[key_in_dict] = evt_load
+            # ----- we adhere the dict_events with the same corresponding keys -----------
+            if key_in_dict in dir_return_diff_file:
+                for key in dir_return_diff_file[key_in_dict].keys():
+                    dir_return_diff_file[key_in_dict][key].extend(evt_load[key])
+            else:
+                dir_return_diff_file[key_in_dict] = evt_load
+        for key_in_dict in v_duplicate_keys:
+            for key in dir_return_diff_file[key_in_dict].keys():
+                dir_return_diff_file[key_in_dict][key] = np.array(dir_return_diff_file[key_in_dict][key])
+
     #-----------------------------------------------------------------------------------------------------
 
     #----------- for multi-files loading -----------------------------------------------------------------
@@ -217,12 +236,13 @@ def LoadFileListUprootOptimized(list_files,list_corresponding_keys, name_branch,
     for key_in_dict,name_file_multi_files in tqdm.tqdm(zip(list_corresponding_keys[v_is_multi_files],list_files[v_is_multi_files])):
         dir_return_diff_file[key_in_dict] = LoadMultiROOTFiles(name_file_multi_files, name_branch=name_branch, list_branch_filter=list_branch_filter)
 
-    if return_shuffle_index:
-        index_orignal = np.arange(len(list_files))
-        index_return = np.concatenate((index_orignal[v_is_one_file],index_orignal[v_is_multi_files]))
-        return (dir_return_diff_file,index_return)
-
-    return dir_return_diff_file
+    return {key:dir_return_diff_file[key] for key in list_corresponding_keys}
+    # if return_shuffle_index:
+    #     index_orignal = np.arange(len(list_files))
+    #     index_return = np.concatenate((index_orignal[v_is_one_file],index_orignal[v_is_multi_files]))
+    #     return (dir_return_diff_file,index_return)
+    #
+    # return dir_return_diff_file
 
 if __name__ == "__main__":
     import time

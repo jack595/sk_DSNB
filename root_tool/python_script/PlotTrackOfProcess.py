@@ -17,6 +17,21 @@ import concurrent.futures
 
 plt.style.use("/afs/ihep.ac.cn/users/l/luoxj/Style/Paper.mplstyle")
 
+
+def JudgeSingleOpticlaTrack_HitThePMT(pdg, one_track_x, one_track_y, one_track_z, xyz_pmt,
+                                      R_pmt=1000):
+    if pdg != 20022:  # Only deal with optical photons
+        return False
+
+    R_exitPointToPMT = np.sum(
+        (np.array([one_track_x[-1], one_track_y[-1], one_track_z[-1]]) - xyz_pmt) ** 2) ** 0.5
+
+    if R_exitPointToPMT > R_pmt:  # mm
+        return False
+    else:
+        return True
+
+
 class PlotTrackOfProcess:
     def __init__(self):
         self.set_evID = set()
@@ -153,21 +168,11 @@ class PlotTrackOfProcess:
             v_Ek_return.append(GetKineticE(p_square, mass))
         return np.array(v_Ek_return)
 
-    @staticmethod
-    def JudgeSingleOpticlaTrack_HitThePMT(pdg, one_track_x, one_track_y, one_track_z, xyz_pmt,
-                                            R_pmt=1000):
-        if pdg != 20022:  # Only deal with optical photons
-            return False
 
-        R_exitPointToPMT = np.sum(
-            (np.array([one_track_x[-1], one_track_y[-1], one_track_z[-1]]) - xyz_pmt) ** 2) ** 0.5
 
-        if R_exitPointToPMT > R_pmt:  # mm
-            return False
-        else:
-            return True
 
-    def PlotOpticalTrack_HitCertainPMT(self, evtID, pmtID=1, fig=None,ax=None, name_title=""):
+    def PlotOpticalTrack_HitCertainPMT(self, evtID, pmtID=1, fig=None,ax=None, name_title="",
+                                       multiprocessing=True, n_tracks_to_run=-1):
         # Check PMT map
         if self.pmt_map is None:
             print("You should set pmt map( PMTID->xyz ),by using self.SetPMTMap(path_map_file)")
@@ -179,16 +184,23 @@ class PlotTrackOfProcess:
         ax.set_title(name_title)
         index_evtID_plot = (self.dir_tracks["evtID"] == evtID)
 
-        list_evtID = np.where(index_evtID_plot == True)[0]
-        tracks_evtID_pdg = self.dir_tracks["pdgID"][list_evtID]
-        tracks_evtID_x = self.dir_tracks["Mu_Posx"][list_evtID]
-        tracks_evtID_y = self.dir_tracks["Mu_Posy"][list_evtID]
-        tracks_evtID_z = self.dir_tracks["Mu_Posz"][list_evtID]
-        tracks_evtID_t = self.dir_tracks["Mu_Time"][list_evtID]
 
-        with concurrent.futures.ProcessPoolExecutor() as executor:
-            v_index_hit_the_pmt = executor.map(self.JudgeSingleOpticlaTrack_HitThePMT, tracks_evtID_pdg,tracks_evtID_x,
-                         tracks_evtID_y, tracks_evtID_z,[self.xyz_pmt]*len(tracks_evtID_x))
+        list_evtID = np.where(index_evtID_plot == True)[0]
+        tracks_evtID_pdg = self.dir_tracks["pdgID"][list_evtID][:n_tracks_to_run]
+        tracks_evtID_x = self.dir_tracks["Mu_Posx"][list_evtID][:n_tracks_to_run]
+        tracks_evtID_y = self.dir_tracks["Mu_Posy"][list_evtID][:n_tracks_to_run]
+        tracks_evtID_z = self.dir_tracks["Mu_Posz"][list_evtID][:n_tracks_to_run]
+        tracks_evtID_t = self.dir_tracks["Mu_Time"][list_evtID][:n_tracks_to_run]
+
+        if multiprocessing:
+            with concurrent.futures.ProcessPoolExecutor() as executor:
+                v_index_hit_the_pmt = executor.map(JudgeSingleOpticlaTrack_HitThePMT, tracks_evtID_pdg,tracks_evtID_x,
+                             tracks_evtID_y, tracks_evtID_z,[self.xyz_pmt]*len(tracks_evtID_x))
+        else:
+            v_index_hit_the_pmt = []
+            for i in tqdm.trange(len(tracks_evtID_pdg)):
+                v_index_hit_the_pmt.append(JudgeSingleOpticlaTrack_HitThePMT( tracks_evtID_pdg[i],tracks_evtID_x[i],
+                             tracks_evtID_y[i], tracks_evtID_z[i],self.xyz_pmt))
         v_index_hit_the_pmt = np.array(list(v_index_hit_the_pmt))
 
         for i in np.where(v_index_hit_the_pmt)[0]:
@@ -197,13 +209,14 @@ class PlotTrackOfProcess:
             color = next(ax._get_lines.prop_cycler)['color']
             ax.plot(tracks_evtID_x[i], tracks_evtID_y[i], tracks_evtID_z[i], color=color, label=f"{self.v_hittime_certain_pmt[-1]:.0f} ns")
 
-        fig.tight_layout()
-        fig.subplots_adjust(right=0.8)
+        # fig.tight_layout()
+        # fig.subplots_adjust(right=0.8)
         ax.legend(loc='center left', bbox_to_anchor=(1.07, 0.5), fontsize=15)
         ax.set_xlabel("X [ mm ]", linespacing=5)
         ax.set_ylabel("Y [ mm ]", linespacing=5)
         ax.set_zlabel("Z [ mm ]", linespacing=5)
-        ax.dist = 10
+        ax.set_title(f"PMTID={pmtID}")
+        # ax.dist = 10
 
         self.v_index_hit_the_pmt = np.array(v_index_hit_the_pmt)
 
