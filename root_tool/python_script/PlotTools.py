@@ -14,6 +14,10 @@ def GetListOfCmap():
     return [plt.cm.spring ,plt.cm.hot, plt.cm.winter, plt.cm.autumn, plt.cm.pink, plt.cm.cool]
 def GetListOfLineColor():
     return ["b","g","r","c","m","y","k","w"]
+def GetListOfHist2DColor():
+    return ['Greys', 'Oranges', 'Purples', 'Blues', 'Greens', 'Reds' ]*5
+def GetRespondingColor():
+    return ['grey', 'orange','purple', 'blue','green', 'red']*5
 
 def PlotContributionOfEachArray(v2d_input:np.ndarray,label_columns="", label_index="", columns_legend:int=1,
                                 show_table=False,colormap="tab20c", reverse=False):

@@ -163,6 +163,9 @@ def LoadMultiROOTFiles(name_files:str="*.root",  name_branch:str="evt", list_bra
     """
     files_list = glob.glob(name_files)
     n_files = len(files_list)
+    if n_files == 0:
+        print(f"Cannot find related files in {files_list}!!!!!!!!")
+        exit(1)
     dir_events = LoadOneFileUproot(files_list[0], name_branch, list_branch_filter, return_list=(n_files != 1))
     if n_files == 1:
         return dir_events
@@ -183,8 +186,7 @@ def LoadMultiROOTFiles(name_files:str="*.root",  name_branch:str="evt", list_bra
             continue
     return dir_events
 
-def LoadFileListUprootOptimized(list_files,list_corresponding_keys, name_branch, list_branch_filter:list=None,v_is_one_file=None,
-                                return_shuffle_index=False):
+def LoadFileListUprootOptimized(list_files,list_corresponding_keys, name_branch, list_branch_filter:list=None,v_is_one_file=None):
     """
 
     :param list_files: files list for files to load, example: ["1.root", "*.root","[1-4].root"]
