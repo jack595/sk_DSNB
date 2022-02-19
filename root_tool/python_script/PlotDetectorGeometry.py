@@ -13,6 +13,9 @@ sys.path.append("/afs/ihep.ac.cn/users/l/luoxj/root_tool/python_script/")
 
 from mpl_toolkits.mplot3d.axes3d import Axes3D
 
+def GetR3(XYZ):
+    XYZ = np.array(XYZ)
+    return np.sum((XYZ/1e3)**2)**(3/2)
 
 # 3D detector sphere
 def PlotBaseSphere(ax:Axes3D=None, R=17.5):

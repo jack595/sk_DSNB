@@ -186,7 +186,8 @@ def LoadMultiROOTFiles(name_files:str="*.root",  name_branch:str="evt", list_bra
             continue
     return dir_events
 
-def LoadFileListUprootOptimized(list_files,list_corresponding_keys, name_branch, list_branch_filter:list=None,v_is_one_file=None):
+def LoadFileListUprootOptimized(list_files,list_corresponding_keys, name_branch, list_branch_filter:list=None,v_is_one_file=None,
+                                use_multiprocess=False):
     """
 
     :param list_files: files list for files to load, example: ["1.root", "*.root","[1-4].root"]
@@ -208,26 +209,33 @@ def LoadFileListUprootOptimized(list_files,list_corresponding_keys, name_branch,
     # ----------for single file loading ( using multiprocessing to load those files) ---------------------
     n_single_file = Counter(v_is_one_file)[True]
     print("Single File List:\t", list_files[v_is_one_file])
-    with concurrent.futures.ProcessPoolExecutor() as executor:
-        # -------------For duplicate key, we need to return list so that we can adjoin the dict_events-----
-        counter_key = Counter(list_corresponding_keys)
-        v_duplicate_keys = [key for key,count in counter_key.items() if count >1]
-        v_whether_return_list = np.array([False]*n_single_file)
-        for key in v_duplicate_keys:
-            v_whether_return_list = v_whether_return_list | (list_corresponding_keys==key)
-        #------------------------------------------------------
 
-        evts_load = executor.map(LoadOneFileUproot, list_files[v_is_one_file], [name_branch]*n_single_file, [list_branch_filter]*n_single_file, v_whether_return_list )
-        for evt_load, key_in_dict,name_file in zip(evts_load, list_corresponding_keys[v_is_one_file],list_files[v_is_one_file]):
-            # ----- we adhere the dict_events with the same corresponding keys -----------
-            if key_in_dict in dir_return_diff_file:
-                for key in dir_return_diff_file[key_in_dict].keys():
-                    dir_return_diff_file[key_in_dict][key].extend(evt_load[key])
-            else:
-                dir_return_diff_file[key_in_dict] = evt_load
-        for key_in_dict in v_duplicate_keys:
+    # -------------For duplicate key, we need to return list so that we can adjoin the dict_events-----
+    counter_key = Counter(list_corresponding_keys)
+    v_duplicate_keys = [key for key,count in counter_key.items() if count >1]
+    v_whether_return_list = np.array([False]*n_single_file)
+    for key in v_duplicate_keys:
+        v_whether_return_list = v_whether_return_list | (list_corresponding_keys==key)
+    #------------------------------------------------------
+    if use_multiprocess:
+        with concurrent.futures.ProcessPoolExecutor() as executor:
+            evts_load = executor.map(LoadOneFileUproot, list_files[v_is_one_file], [name_branch]*n_single_file, [list_branch_filter]*n_single_file, v_whether_return_list)
+    else:
+        evts_load = []
+        for i in range(n_single_file):
+            evts_load.append(LoadOneFileUproot(list_files[v_is_one_file][i], name_branch=name_branch, list_branch_filter=list_branch_filter,
+                                               return_list=v_whether_return_list[i]))
+
+    for evt_load, key_in_dict,name_file in zip(evts_load, list_corresponding_keys[v_is_one_file],list_files[v_is_one_file]):
+        # ----- we adhere the dict_events with the same corresponding keys -----------
+        if key_in_dict in dir_return_diff_file:
             for key in dir_return_diff_file[key_in_dict].keys():
-                dir_return_diff_file[key_in_dict][key] = np.array(dir_return_diff_file[key_in_dict][key])
+                dir_return_diff_file[key_in_dict][key].extend(evt_load[key])
+        else:
+            dir_return_diff_file[key_in_dict] = evt_load
+    for key_in_dict in v_duplicate_keys:
+        for key in dir_return_diff_file[key_in_dict].keys():
+            dir_return_diff_file[key_in_dict][key] = np.array(dir_return_diff_file[key_in_dict][key])
 
     #-----------------------------------------------------------------------------------------------------
 

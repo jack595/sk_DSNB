@@ -17,6 +17,11 @@ def ArrayToTree(data_array, name_in_tree, dtype=np.float32):
     data_array = np.array(data_array, dtype=[(name_in_tree, dtype)])
     return rn.array2tree(data_array)
 
+def MultiArrayToTree(v_data_arrays, v_name_in_tree, dtype=np.float32):
+    v_array_to_tree = []
+    for i in range(len(v_data_arrays[0])):
+        v_array_to_tree.append((v_data_arrays[j][i] for j in range(len(v_data_arrays))))
+
 
 def DictToRNArray(dir_events:dict):
     v_dtype = []
@@ -52,4 +57,81 @@ def GetGaussianFunc():
 
 def TreeToDataset(x, tree):
     return ROOT.RooDataSet("data","data",ROOT.RooArgSet(x), ROOT.RooFit.Import(tree))
+
+def FitFromArray(v_x,x_range=None,x_range_fit=None, sigma_init=1., sigma_range=None,bins=100, func=None, canvas=None, xlabel="x",
+                 path_savefig=None, title=None, draw=True, fit_range_sigma=None):
+    from HistTools import GetBinCenter
+    hist = np.histogram(v_x, bins=bins)
+    x_peak = GetBinCenter(hist[1])[np.argmax(hist[0])]
+    print(x_peak)
+    if fit_range_sigma == None:
+        x_std = np.std(v_x)
+    else:
+        x_std = fit_range_sigma
+
+    if sigma_range == None:
+        sigma_range = (0.1, 300)
+
+    if x_range == None:
+        x_range = (min(v_x), max(v_x))
+
+    print("----------> Set RooRealVar x")
+    x = ROOT.RooRealVar("x", xlabel, x_range[0], x_range[1])
+
+    # Construct signal pdf
+    print("-----------> Construct Signal pdf")
+    mean = ROOT.RooRealVar("mean", "mean", x_peak, min(v_x), max(v_x))
+
+    sigma = ROOT.RooRealVar("sigma", "sigma", sigma_init, sigma_range[0], sigma_range[1])
+
+    if func == None:
+        gx = ROOT.RooGaussian("gx", "gx", x, mean, sigma)
+        f = ROOT.RooRealVar("f", "f", 0.5, 0.0, 1.0)
+        func = gx
+     ###########################################################
+
+    # Generate RooDataset
+    print("----------> Generate RooDataset")
+    v_x_array = np.array(v_x, dtype=[("x",np.float32)])
+    tree_time = rn.array2tree(v_x_array,name="x")
+    data = ROOT.RooDataSet("data","data",ROOT.RooArgSet(x), ROOT.RooFit.Import(tree_time))
+
+    # Set Range for x
+    print("----------> Set Range for x")
+    if x_range_fit == None:
+        x_range_fit = (x_peak-x_std, x_peak+x_std)
+
+    x.setRange("signal", x_range_fit[0], x_range_fit[1])
+
+    # Fit data
+    fit_result = func.fitTo(data, ROOT.RooFit.Range("signal"), ROOT.RooFit.Save())
+    # print("Chi2:\t", fit_result.minNll())
+
+    # Plot Fit Results
+    if canvas == None:
+        canvas = ROOT.TCanvas("c","")
+    canvas.cd()
+    xframe = x.frame()
+    data.plotOn(xframe)
+    func.plotOn(xframe)
+    func.paramOn(xframe, ROOT.RooFit.Layout(0.6,0.9,0.9),ROOT.RooFit.ShowConstants(True))
+    if title != None:
+        xframe.SetTitle(title)
+    xframe.Draw()
+    if draw:
+        canvas.Draw()
+    if path_savefig!=None:
+        canvas.SaveAs(path_savefig)
+
+    return (mean.getVal(0), sigma.getVal(0))
+
+
+if __name__ == '__main__':
+    import random
+    v_data = [random.gauss(0, 1) for _ in range(4000)]
+    print(v_data)
+    FitFromArray(v_data, xlabel="Time")
+    plt.show()
+
+
 
