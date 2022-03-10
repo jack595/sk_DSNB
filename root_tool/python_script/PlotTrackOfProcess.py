@@ -5,7 +5,7 @@
 # @File: PlotTrackOfProcess.py
 import matplotlib.pylab as plt
 import numpy as np
-import uproot4 as up
+import uproot as up
 from matplotlib.backends.backend_pdf import PdfPages
 import sys
 from PmtIDMap import PMTIDMap
@@ -30,6 +30,31 @@ def JudgeSingleOpticlaTrack_HitThePMT(pdg, one_track_x, one_track_y, one_track_z
         return False
     else:
         return True
+
+def PlotTrack(v_step_pdgID:np.ndarray, v_step_trackID:np.ndarray,
+              v_step_x:np.ndarray, v_step_y:np.ndarray, v_step_z:np.ndarray, ax=None,
+              list_filter_pdgID=None):
+    if ax == None:
+        ax = plt.subplot(111, projection="3d")
+    if list_filter_pdgID == None:
+        list_filter_pdgID = []
+
+    for trackID in set(v_step_trackID):
+        index_trackID = (v_step_trackID==trackID)
+        pdgID = v_step_pdgID[index_trackID][0]
+        if pdgID in list_filter_pdgID:
+            continue
+        x = v_step_x[index_trackID]
+        y = v_step_y[index_trackID]
+        z = v_step_z[index_trackID]
+        print("XYZ:\t",x,y,z)
+
+
+        color = next(ax._get_lines.prop_cycler)['color']
+        ax.plot(x, y, z,color=color)
+        index_middle = int(len(x) / 2)
+        ax.text( x[index_middle], y[index_middle], z[index_middle], f"{pdgID}", color=color)
+
 
 
 class PlotTrackOfProcess:

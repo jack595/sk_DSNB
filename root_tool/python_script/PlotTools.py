@@ -47,3 +47,9 @@ def PlotContributionOfEachArray(v2d_input:np.ndarray,label_columns="", label_ind
         display(df_Ek)
     df_Ek.plot.bar(stacked=True,colormap=colormap)
     plt.legend(bbox_to_anchor=(1.0, 1.0),ncol=columns_legend)
+
+
+def LegendNotRepeated(*args, **kwargs):
+    handles, labels = plt.gca().get_legend_handles_labels()
+    by_label = dict(zip(labels, handles))
+    plt.legend(by_label.values(), by_label.keys(), *args, **kwargs)

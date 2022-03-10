@@ -58,7 +58,7 @@ def GetGaussianFunc():
 def TreeToDataset(x, tree):
     return ROOT.RooDataSet("data","data",ROOT.RooArgSet(x), ROOT.RooFit.Import(tree))
 
-def FitFromArray(v_x,x_range=None,x_range_fit=None, sigma_init=1., sigma_range=None,bins=100, func=None, canvas=None, xlabel="x",
+def FitFromArray(v_x,x_range=None,std_get_range=False,x_range_fit=None, sigma_init=1., sigma_range=None,bins=100, func=None, canvas=None, xlabel="x",
                  path_savefig=None, title=None, draw=True, fit_range_sigma=None):
     from HistTools import GetBinCenter
     hist = np.histogram(v_x, bins=bins)
@@ -73,7 +73,10 @@ def FitFromArray(v_x,x_range=None,x_range_fit=None, sigma_init=1., sigma_range=N
         sigma_range = (0.1, 300)
 
     if x_range == None:
-        x_range = (min(v_x), max(v_x))
+        if std_get_range:
+            x_range = (x_peak-2*x_std, x_peak+2*x_std)
+        else:
+            x_range = (min(v_x), max(v_x))
 
     print("----------> Set RooRealVar x")
     x = ROOT.RooRealVar("x", xlabel, x_range[0], x_range[1])

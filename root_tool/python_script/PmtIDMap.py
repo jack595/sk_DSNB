@@ -4,7 +4,7 @@
 # @Email: luoxj@ihep.ac.cn
 # @File: PmtIDMap.py
 import numpy as np
-import uproot4 as up
+import uproot as up
 class PMTIDMap:
     n_pmt = 17612
 

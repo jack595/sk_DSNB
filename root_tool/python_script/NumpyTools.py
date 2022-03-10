@@ -8,6 +8,7 @@ import numpy as np
 import random
 from copy import copy
 from LoadMultiFiles import MergeEventsDictionary
+import math
 
 plt.style.use("/afs/ihep.ac.cn/users/l/luoxj/Style/Paper.mplstyle")
 def ReBin(v:np.ndarray):
@@ -81,7 +82,25 @@ def ShuffleDataset(dir_events:dict):
     for key in dir_events.keys():
         dir_events[key] = dir_events[key][index_shuffle][0]
 
+def weighted_avg_and_std(values, weights):
+    """
+    Return the weighted average and standard deviation.
 
+    values, weights -- Numpy ndarrays with the same shape.
+    """
+    average = np.average(values, weights=weights)
+    # Fast and numerically precise:
+    variance = np.average((values-average)**2, weights=weights)
+    return (average, math.sqrt(variance))
+
+# def cumsum_weighted(values, weights):
+
+def GetIndexOfListTags(v_evts_tags, v_tags_get_index):
+    v_evts_tags = np.array(v_evts_tags)
+    index = [False]*len(v_evts_tags)
+    for tag in v_tags_get_index:
+        index = index|(v_evts_tags==tag)
+    return index
 
 if __name__ == '__main__':
     # Test AlignRisingEdge

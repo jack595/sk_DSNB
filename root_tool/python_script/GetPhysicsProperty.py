@@ -59,3 +59,15 @@ class PDGMassMap:
 
 def GetKineticE(momentum_square, mass):
     return np.sqrt(momentum_square+mass**2)-mass
+
+def NameToPDGID(name_ion:str, delimiter="_"):
+    """
+
+    :param name_ion: the name of ion, for example He_4
+    :return: PDGID
+    """
+    from PeriodictableTools import PeriodictableTools
+    periodictable_tool = PeriodictableTools()
+    Z = int(periodictable_tool.MapToCharge(name_ion.split(delimiter)[0]))
+    N = int(name_ion.split(delimiter)[1])
+    return int(N*10+Z*1e4+1e9)

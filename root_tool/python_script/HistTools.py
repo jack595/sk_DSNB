@@ -9,6 +9,7 @@ import numpy as np
 plt.style.use("/afs/ihep.ac.cn/users/l/luoxj/Style/Paper.mplstyle")
 
 def GetBinCenter(h_edges):
+    h_edges = np.array(h_edges)
     return (h_edges[1:]+h_edges[:-1])/2
 
 def GetRidOfZerosBins(h_2d:np.ndarray, h_center_x:np.ndarray):
@@ -38,6 +39,10 @@ def GetHist2DProjectionY(h_2d_input:np.ndarray, h_edges_x:np.ndarray, h_edges_y:
 
 def RedrawHistFrom_plt_hist(hist, *args, **kargs):
     plt.step(GetBinCenter(hist[1]), hist[0],where="mid", *args, **kargs)
+
+def GetMaxArgOfHist(v_data, bins=100):
+    hist =  np.histogram(v_data, bins=bins)
+    return GetBinCenter(hist[1])[np.argmax(hist[0])]
 
 if __name__ == '__main__':
     hist = plt.hist([1,2,35,3,5,6,1])

@@ -6,7 +6,7 @@
 import numpy as np
 import glob
 from copy import copy
-import uproot4 as up
+import uproot as up
 from collections import Counter
 import tqdm
 import subprocess
@@ -61,6 +61,7 @@ def MergeEventsDictionary(v_dir:list):
     keys_one_dir = v_dir[0].keys()
     for dir in v_dir:
         if keys_one_dir != dir.keys():
+            print(keys_one_dir, " !=  ", list(dir.keys()))
             print("ERROR: Input dictionaries should have the same keys!!!!!!!!!!!!")
             exit(1)
 
