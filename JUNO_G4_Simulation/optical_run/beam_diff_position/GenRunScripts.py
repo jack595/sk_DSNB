@@ -58,7 +58,7 @@ if __name__ == "__main__":
     v_L_LS = [5]
     v_L_tank = [1]
     v_material = ["Acrylic"]
-    options = "-UseTank -optical -seed $1 -r_LS 2.5 -Add_ESR"
+    options = "-UseTank -optical -seed $1 -r_LS 2.5 -Add_ESR -d_PMT 3"
     template_sub = "hep_sub {} -argu \"%{{ProcId}}\" -n 100 -m 4000 -e /dev/null\n"
     for x in v_x_Beam:
         for material in v_material:

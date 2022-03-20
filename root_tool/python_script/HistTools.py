@@ -12,6 +12,19 @@ def GetBinCenter(h_edges):
     h_edges = np.array(h_edges)
     return (h_edges[1:]+h_edges[:-1])/2
 
+def ReBin(h_center, h_values, n_bins_to_merge:int=2):
+    h_values = np.array(h_values)
+    if ( len(h_center) )%n_bins_to_merge!=0:
+        print("len(h_center)%n_bins_to_merge != 0!!!!!!!!!")
+        exit()
+    elif len(h_center) != len(h_values):
+        print("len(h_center) != len(h_values)!!!!!! Check if there is a cut!!!")
+        exit()
+    h_center_rebin = GetBinCenter(h_center)[::n_bins_to_merge]
+    h_values_rebin = h_values[::n_bins_to_merge]+h_values[1::n_bins_to_merge]
+    return h_center_rebin, h_values_rebin
+
+
 def GetRidOfZerosBins(h_2d:np.ndarray, h_center_x:np.ndarray):
     index_to_cut = []
     for i in range(len(h_2d)):
@@ -43,6 +56,17 @@ def RedrawHistFrom_plt_hist(hist, *args, **kargs):
 def GetMaxArgOfHist(v_data, bins=100):
     hist =  np.histogram(v_data, bins=bins)
     return GetBinCenter(hist[1])[np.argmax(hist[0])]
+
+def GetAlignValue(v_time_to_align, v_time_criteria,v_charge_criteria, bins, ratio_threshold=0.2,align_method="peak"):
+    h_time_to_align,_ = np.histogram(v_time_to_align, bins)
+    h_time_criteria,_ = np.histogram(v_time_criteria, bins, weights=v_charge_criteria)
+    bins_center = GetBinCenter(bins)
+    if align_method == "peak":
+        return bins_center[ np.argmax(h_time_to_align)]-bins_center[np.argmax(h_time_criteria) ]
+    elif align_method == "threshold":
+        return bins_center[ np.where( h_time_to_align> ratio_threshold*max(h_time_to_align) )[0][0] ] -\
+            bins_center[ np.where( h_time_criteria> ratio_threshold*max(h_time_criteria) )[0][0] ]
+
 
 if __name__ == '__main__':
     hist = plt.hist([1,2,35,3,5,6,1])

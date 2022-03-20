@@ -73,3 +73,23 @@ def GetNPE(dir_PMT:dict, chamberID=0, mean=True):
         return np.median(v_nPE)
     else:
         return np.array(v_nPE)
+
+def GetSiNPE(dir_Si:dict, chamberID=0):
+    from collections import Counter
+    v_NPE = []
+    for i_evt in range(len(dir_Si["evtID"])):
+        index = (dir_Si["step_pdgID"][i_evt]==20022) & (dir_Si["step_chamberID"][i_evt]==chamberID)
+        nPE = len( set(dir_Si["step_trackID"][i_evt][index]) )
+        v_NPE.append( nPE )
+    return np.array(v_NPE)
+
+def GetSiPETime(dir_Si:dict, chamberID=0):
+    v2d_PE_Time = []
+    for i_evt in range(len(dir_Si["evtID"])):
+        v_PE_Time = []
+        index = (dir_Si["step_pdgID"][i_evt]==20022) & (dir_Si["step_chamberID"][i_evt]==chamberID)
+        for trackID in set(dir_Si["step_trackID"][i_evt][index]):
+            v_PE_Time.append( min( dir_Si["step_t"][i_evt][index][ dir_Si["step_trackID"][i_evt][index]==trackID ] ) )
+        v2d_PE_Time.append( v_PE_Time )
+    return v2d_PE_Time
+

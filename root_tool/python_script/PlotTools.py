@@ -13,9 +13,9 @@ plt.style.use("/afs/ihep.ac.cn/users/l/luoxj/Style/Paper.mplstyle")
 def GetListOfCmap():
     return [plt.cm.spring ,plt.cm.hot, plt.cm.winter, plt.cm.autumn, plt.cm.pink, plt.cm.cool]
 def GetListOfLineColor():
-    return ["b","g","r","c","m","y","k","w"]
+    return ["b","g","r","c","m","y","k"]
 def GetListOfHist2DColor():
-    return ['Greys', 'Oranges', 'Purples', 'Blues', 'Greens', 'Reds' ]*5
+    return [ 'Oranges', 'Purples', 'Blues', 'Greens', 'Reds', 'Greys', ]*5
 def GetRespondingColor():
     return ['grey', 'orange','purple', 'blue','green', 'red']*5
 
@@ -29,7 +29,7 @@ def PlotContributionOfEachArray(v2d_input:np.ndarray,label_columns="", label_ind
             colormap: options can be found in http://ipacc.ihep.ac.cn/
 
             label_index: for the label of first dimension, v2d[0], example :event
-            label_colums: for the label of second dimension, v2d[1], example:step
+            label_columns: for the label of second dimension, v2d[1], example:step
 
     :return:
     """
@@ -38,11 +38,21 @@ def PlotContributionOfEachArray(v2d_input:np.ndarray,label_columns="", label_ind
     if reverse:
         for i in range(len(v2d_input)):
             v2d[i] = v2d_input[i][::-1]
+
+        if isinstance(label_columns, list):
+            label_columns = label_columns[::-1]
     v_length = [len(v_Ek) for v_Ek in v2d]
     v2d_Ek_align = np.array([np.pad(v, (0, np.max(v_length) - len(v)), 'constant') for v in v2d])
-
-    df_Ek = pd.DataFrame(v2d_Ek_align, columns=[f"{label_columns} {i}" for i in range(np.max(v_length))],
+    if isinstance(label_index, str) and isinstance(label_columns, str):
+        df_Ek = pd.DataFrame(v2d_Ek_align, columns=[f"{label_columns} {i}" for i in range(np.max(v_length))],
                          index=[f"{label_index} {i}" for i in range(len(v2d_Ek_align))])
+    elif isinstance(label_index, list) and isinstance(label_columns, list):
+        df_Ek = pd.DataFrame(v2d_Ek_align, columns=label_columns,
+                             index=label_index)
+    else:
+        print("Both label_columns and label_index should be str or list!!!!!!!!!")
+        exit(1)
+
     if show_table:
         display(df_Ek)
     df_Ek.plot.bar(stacked=True,colormap=colormap)

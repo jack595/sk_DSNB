@@ -152,6 +152,21 @@ def LoadOneFileUproot(name_file:str, name_branch:str, list_branch_filter:list=No
                 dir_event[key] = np.array(tree[key])
     return dir_event
 
+def LoadOneFileUprootCertainEntries(name_file:str, name_branch:str,n_entries_load:int=100, list_branch_filter:list=None, return_list:bool=False):
+    dir_event = {}
+    for iter in up.iterate(f"{name_file}:{name_branch}", step_size=n_entries_load):
+        tree = iter
+        for key in tree.fields:
+            if (not list_branch_filter is None) and (key in list_branch_filter):
+                continue
+            if return_list:
+                dir_event[key] = list( tree[key] )
+            else:
+                dir_event[key] = np.array( list(tree[key]) )
+
+        break
+    return dir_event
+
 
 def LoadMultiROOTFiles(name_files:str="*.root",  name_branch:str="evt", list_branch_filter:list=None, n_files_to_load=-1):
     """
