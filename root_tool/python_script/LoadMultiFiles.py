@@ -152,9 +152,19 @@ def LoadOneFileUproot(name_file:str, name_branch:str, list_branch_filter:list=No
                 dir_event[key] = np.array(tree[key])
     return dir_event
 
-def LoadOneFileUprootCertainEntries(name_file:str, name_branch:str,n_entries_load:int=100, list_branch_filter:list=None, return_list:bool=False):
+def LoadOneFileUprootCertainEntries(name_file:str, name_branch:str,n_entries_load:int=100,
+                                    list_load_branch:list=None,list_branch_filter:list=None, return_list:bool=False):
+    """
+
+    :param name_file:
+    :param name_branch:
+    :param n_entries_load:
+    :param list_branch_filter:
+    :param return_list:
+    :return:
+    """
     dir_event = {}
-    for iter in up.iterate(f"{name_file}:{name_branch}", step_size=n_entries_load):
+    for iter in up.iterate(f"{name_file}:{name_branch}", list_load_branch, step_size=n_entries_load):
         tree = iter
         for key in tree.fields:
             if (not list_branch_filter is None) and (key in list_branch_filter):

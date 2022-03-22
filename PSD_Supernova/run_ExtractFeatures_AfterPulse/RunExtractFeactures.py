@@ -10,10 +10,10 @@ import sys
 sys.path.append("/afs/ihep.ac.cn/users/l/luoxj/root_tool/python_script/")
 sys.path.append("/afs/ihep.ac.cn/users/l/luoxj/PSD_Supernova/code/")
 
-from ExtractFeatureForAfterPulse import ExtractFeature
 import argparse
-from LoadMultiFiles import LoadOneFileUproot
+from LoadMultiFiles import LoadOneFileUproot, LoadOneFileUprootCertainEntries
 from ExtractFeatureForAfterPulse import ExtractFeature
+from ExtractFeaturesToStudyTruth import ExtractFeatureForTruth
 import pandas as pd
 from DictTools import FilterEventsDict
 from NumpyTools import Replace
@@ -33,23 +33,53 @@ if __name__ == "__main__":
     parser.add_argument("--fileNo", "-n", type=int, default=0, help="No. of file to execute")
     parser.add_argument("--template-outfile", "-o", type=str, default="try_{}.root", help="name of outfile")
     parser.add_argument("--save-npz", "-s", action="store_true", default=False, help="Whether to save file as npz")
+    parser.add_argument("--save-truth", action="store_true", default=False, help="Whether to save file as Time Truth")
+    parser.add_argument("--full", action="store_true", default=False, help="Save Full Tags")
     arg = parser.parse_args()
 
     # Set Variables
-    v_tags = list(CommonVariables.map_tag.keys())
+    list_truth_to_save = [ 'PulseTimeTruth', "TriggerTime"]
+    if arg.full:
+        v_tags = None
+    else:
+        v_tags = list(CommonVariables.map_tag.keys())
     Ecut = None
     t_length_buffer = 1e6
 
-
-    dir_evts = LoadOneFileUproot(arg.template_path_PSDTools.format(arg.fileNo),     name_branch="evt",         return_list=False)
-    dir_map = LoadOneFileUproot(arg.template_path_evtTruth.format(arg.fileNo), name_branch='evtTruth',     return_list=False)
+    if arg.save_truth:
+        dir_evts = LoadOneFileUprootCertainEntries(arg.template_path_PSDTools.format(arg.fileNo),
+                                                   name_branch="evt",
+                                                   return_list=False, n_entries_load=10000)
+        dir_map = LoadOneFileUprootCertainEntries(arg.template_path_evtTruth.format(arg.fileNo), name_branch='evtTruth',
+                                                  list_load_branch=["evtType", "recX",
+                                                                    "recY", "recZ","TriggerTimeInterval",
+                                                                    "TriggerTime"]+list_truth_to_save,
+                                                  return_list=False,n_entries_load=10000)
+    else:
+        dir_evts = LoadOneFileUproot(arg.template_path_PSDTools.format(arg.fileNo),     name_branch="evt",
+                                                   return_list=False)
+        dir_map = LoadOneFileUproot(arg.template_path_evtTruth.format(arg.fileNo), name_branch='evtTruth',
+                                                  return_list=False)
 
     bins = np.loadtxt(f"/afs/ihep.ac.cn/users/l/luoxj/PSD_Supernova/myJUNOCommon/share/PSD/Bins_Setting{option_time_profile}.txt", delimiter=",")
 
-    dir_variables =ExtractFeature(dir_map, dir_evts, bins, v_tags, Ecut, t_length_buffer, save_h_time=arg.save_npz)
+    if arg.save_truth:
+        dir_variables =ExtractFeatureForTruth(dir_map, dir_evts, bins, v_tags, Ecut,
+                                                t_length_buffer, list_truth_to_save=list_truth_to_save)
+    else:
+        if v_tags== None:
+            dir_variables,v_tags = ExtractFeature(dir_map, dir_evts, bins, v_tags, Ecut,
+                                           t_length_buffer, save_h_time=arg.save_npz, save_truth=arg.save_truth)
+
+            name_file = arg.template_outfile.replace(".root", ".npz").format("")
+            np.savez(name_file, dir_variables=dir_variables)
+            exit(0)
+        else:
+            dir_variables =ExtractFeature(dir_map, dir_evts, bins, v_tags, Ecut,
+                                  t_length_buffer, save_h_time=arg.save_npz, save_truth=arg.save_truth)
+
 
     # Separate different events into different TTrees
-    import ROOT
     from collections import Counter
 
     for tree_tag in ["AfterPulse", "eES_pES"]:
@@ -68,6 +98,8 @@ if __name__ == "__main__":
         for key in dir_variables_with_tag.keys():
             if key == "tag":
                 dir_variables_with_tag[key] = np.array(dir_variables_with_tag[key], dtype=np.int32)
+            elif "Truth" in key:
+                continue
             else:
                 dir_variables_with_tag[key] = np.array(dir_variables_with_tag[key], dtype=np.float64)
 
@@ -81,6 +113,7 @@ if __name__ == "__main__":
             np.savez(name_file, dir_variables=dir_variables_with_tag)
         else:
             # Save results into root file
+            import ROOT
             rdf = ROOT.RDF.MakeNumpyDataFrame(dir_variables_with_tag)
             rdf.Snapshot("Features", arg.template_outfile.format(tree_tag))
             rdf.Display().Print()

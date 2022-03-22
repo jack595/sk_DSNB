@@ -14,6 +14,7 @@ class PMTIDMap:
         mapfile example: /cvmfs/juno.ihep.ac.cn/centos7_amd64_gcc830/Pre-Release/J21v1r0-Pre2/offline/Simulation/DetSimV2/DetSimOptions/data/PMTPos_Acrylic_with_chimney.csv
                          /cvmfs/juno.ihep.ac.cn/centos7_amd64_gcc830/Pre-Release/J21v1r0-Pre2/data/Simulation/ElecSim/PmtData_Lpmt.root
         """
+        self.c_in_LS = 2.99792458e2/1.48
         self.pmt_xyz = np.zeros((self.n_pmt, 3))
         self.pmt_theta_phi = np.zeros((self.n_pmt, 2))
         self.pmt_isHam = np.zeros((self.n_pmt, 1))
@@ -40,6 +41,11 @@ class PMTIDMap:
         else:
             print("ERROR:\tcsv file or root file is supposed to be input!!!!")
             exit(1)
+
+    def GetTOF(self, pmtid, event_vertex:np.ndarray):
+        R = np.sum( (self.idToXYZ(pmtid)-event_vertex)**2 )**0.5
+        return R/self.c_in_LS
+
     def idToXYZ(self, pmtid:int):
         return np.array(self.pmt_xyz[pmtid])
     def idToThetaPhi(self, pmtid:int):
