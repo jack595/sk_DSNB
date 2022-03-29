@@ -111,13 +111,26 @@ def LoadOneFile(name_file:str, key_in_file:str, whether_use_filter:bool):
             print(f"{name_file} will be continue, {reason_continue}")
 
 def LoadMultiFilesMultiProcess(name_files:str="predict_*.npz", key_in_file:str="dir_events",n_files_to_load=-1,
-                   whether_use_filter=False ):
+                   whether_use_filter=False, template_file_name=None ):
+    extract_fileNo = False
     files_list = glob.glob(name_files)
     f = np.load(files_list[0],
                 allow_pickle=True)
     print("key in files:\t",f.files)
     evts_0 = f[key_in_file].item()
     print("Loaded Data Keys:\t", evts_0.keys())
+
+    if len(files_list) == 1:
+        return evts_0
+
+    if template_file_name!= None:
+        extract_fileNo = True
+        import re
+        m_extract_fileNo = re.compile(template_file_name, re.IGNORECASE)
+        key_fileNo = "LoadFileNo"
+        evts_0[key_fileNo] = []
+
+
     evts = {}
     for key in evts_0.keys():
         evts[key] = []
@@ -127,7 +140,10 @@ def LoadMultiFilesMultiProcess(name_files:str="predict_*.npz", key_in_file:str="
         files_list = files_list[1:]
     with concurrent.futures.ProcessPoolExecutor() as executor:
         evts_load = executor.map(LoadOneFile, files_list, [key_in_file]*len(files_list), [whether_use_filter]*len(files_list))
-    for evt_load in evts_load:
+    for evt_load, file_name in zip( evts_load, files_list):
+        if extract_fileNo:
+            fileNo = m_extract_fileNo.match(file_name).groups()[0]
+            evts[key_fileNo].extend( [fileNo]*len( list(evt_load.values())[0] ))
         for key in evt_load.keys():
             evts[key].extend(evt_load[key])
 

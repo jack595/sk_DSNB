@@ -63,6 +63,42 @@ def AlignEvents(v_dict):
             dir[key] = dir[key][:n_events_to_align]
     return (n_events_to_align,dir_cut_off)
 
+def AlignEventsByTag( v_dict, v_tags_in_train, key_tag="tag" ):
+    """
+    :param v_dict: list for events dictionaries, whose each item should have the same length
+    we will make the input dictionaries got the same length,
+           key_tag: key for store tags
+    :return: the dataset have been cut off, which might be useful in testing stage
+    """
+    dir_nEvts_tags = {key:0 for key in v_tags_in_train}
+    v_nEvts_to_left = []
+    v_nEvts = [] # Correlated with v_dict
+    v_tags_in_v_dict = [] # Correlated with v_dict
+
+    for dir in v_dict:
+        tag_in_train = dir[key_tag][0]
+        dir_nEvts_tags[tag_in_train] += len(dir[key_tag])
+        v_nEvts.append( len( dir[key_tag] ) )
+        v_tags_in_v_dict.append( dir[key_tag][0] )
+
+    n_total_events_to_align_each_train_tag = min( list( dir_nEvts_tags.values()) )
+
+    for i, tag_in_train in enumerate( v_tags_in_v_dict ) :
+        v_nEvts_to_left.append( int( np.floor( n_total_events_to_align_each_train_tag * v_nEvts[i]/dir_nEvts_tags[tag_in_train] ) )  )
+
+    # Align events dict
+    dir_cut_off = {}
+    for i, dir in enumerate( v_dict ):
+        n_events_to_align = v_nEvts_to_left[i]
+        for key in dir.keys():
+            if len(dir[key]) > n_events_to_align:
+                if key not in dir_cut_off:
+                    dir_cut_off[key] = copy(dir[key][n_events_to_align:])
+                else:
+                    dir_cut_off[key] =  np.concatenate( (dir_cut_off[key], dir[key][n_events_to_align:] ) )
+            dir[key] = dir[key][:n_events_to_align]
+    return (n_total_events_to_align_each_train_tag,dir_cut_off)
+
 def SplitEventsDict(dir_events:dict, ratio_to_split_train:float=0.5):
     one_key = list(dir_events.keys())[0]
     n_events = len(dir_events[one_key])

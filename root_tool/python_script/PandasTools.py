@@ -6,6 +6,7 @@
 import numpy as np
 import sys
 from copy import copy
+import matplotlib.pylab as plt
 
 sys.path.append("/afs/ihep.ac.cn/users/l/luoxj/root_tool/python_script/")
 
@@ -32,6 +33,14 @@ def AlignDirElements(dir_to_align:dict):
     for key in keys_to_align:
         dir_return[key] = [dir_to_align[key]]*n_evts
     return dir_return
+
+def PlotDataframeIntoPie(df):
+    fig2, ax2 = plt.subplots(figsize=(10, 10))
+    theme = plt.get_cmap('hsv')
+    colors = [theme(1. * i / len(df))
+                             for i in range(len(df))]
+    explode = [0.01]*len(df)
+    df.plot.pie(autopct='%.2f%%',colors=colors,explode=explode)
 
 if __name__ == '__main__':
     dir = {"A":[1,3,5,5], "B":"quartz", "C":np.array([5,6, 2,5])}

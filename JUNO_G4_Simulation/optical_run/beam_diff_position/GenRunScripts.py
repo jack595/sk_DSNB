@@ -55,7 +55,7 @@ if __name__ == "__main__":
     # v_x_Beam = [-2.4, -1.5, 0, 1.5 , 2.4,-2.0, -1.0, 1.0, 2.0 ]
     v_x_Beam = [0 ,1.0, 2.0 , 1.5 , 2.4]
     # v_x_Beam = [-2.0, -1.0, 1.0, 2.0]
-    v_L_LS = [5]
+    v_L_LS = [2]
     v_L_tank = [1]
     v_material = ["Acrylic"]
     options = "-UseTank -optical -seed $1 -r_LS 2.5 -Add_ESR -d_PMT 3"

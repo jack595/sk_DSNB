@@ -63,3 +63,17 @@ def LegendNotRepeated(*args, **kwargs):
     handles, labels = plt.gca().get_legend_handles_labels()
     by_label = dict(zip(labels, handles))
     plt.legend(by_label.values(), by_label.keys(), *args, **kwargs)
+
+def AutoGetColorWithALotOfLine(i_iterate, i_start=5):
+    """
+    This function is used to get color when using science style and number of lines is more than 5,
+    it will return extra colors so that make the colors not repeat
+    :param i_iterate: the i-th line
+    :return: color for plt.plot
+    """
+    v_colors = [ "purple","blue", "black", "c"]
+    if i_iterate>i_start and i_iterate <= i_start+len(v_colors) :
+        color = v_colors[i_iterate-i_start-1]
+    else:
+        color = None
+    return color

@@ -12,12 +12,11 @@ sys.path.append("/afs/ihep.ac.cn/users/l/luoxj/PSD_Supernova/code/")
 
 import argparse
 from LoadMultiFiles import LoadOneFileUproot, LoadOneFileUprootCertainEntries
-from ExtractFeatureForAfterPulse import ExtractFeature
-from ExtractFeaturesToStudyTruth import ExtractFeatureForTruth
-import pandas as pd
+from AfterPulseDiscrimination.ExtractFeatureForAfterPulse import ExtractFeature
+from AfterPulseDiscrimination.ExtractFeaturesToStudyTruth import ExtractFeatureForTruth
 from DictTools import FilterEventsDict
 from NumpyTools import Replace
-from CommonVariables import CommonVariables
+from AfterPulseDiscrimination.CommonVariables import CommonVariables
 
 if __name__ == "__main__":
     option_time_profile = "_NotSubtractTOF"
@@ -44,7 +43,7 @@ if __name__ == "__main__":
     else:
         v_tags = list(CommonVariables.map_tag.keys())
     Ecut = None
-    t_length_buffer = 1e6
+    t_length_buffer = 1e9
 
     if arg.save_truth:
         dir_evts = LoadOneFileUprootCertainEntries(arg.template_path_PSDTools.format(arg.fileNo),
@@ -96,7 +95,7 @@ if __name__ == "__main__":
         dir_variables_with_tag["tag"] = Replace(dir_variables_with_tag["tag"], CommonVariables.map_tag)
 
         for key in dir_variables_with_tag.keys():
-            if key == "tag":
+            if key == "tag" or key == "index":
                 dir_variables_with_tag[key] = np.array(dir_variables_with_tag[key], dtype=np.int32)
             elif "Truth" in key:
                 continue
@@ -109,7 +108,7 @@ if __name__ == "__main__":
 
         if arg.save_npz:
             name_file = arg.template_outfile.replace(".root", ".npz").format(tree_tag)
-            print(name_file)
+            print(name_file, dir_variables_with_tag["tag"])
             np.savez(name_file, dir_variables=dir_variables_with_tag)
         else:
             # Save results into root file
