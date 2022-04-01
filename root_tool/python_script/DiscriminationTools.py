@@ -13,6 +13,7 @@ from copy import copy
 import pandas as pd
 from IPython.display import display
 from HistTools import GetBinCenter
+from collections import Counter
 
 sys.path.append("/afs/ihep.ac.cn/users/l/luoxj/root_tool/python_script/")
 
@@ -25,7 +26,11 @@ class DiscriminationTools:
         self.dir_eff_to_df = {"index":[],f"{key_1} Eff.":[], f"{key_0} Ineff.":[],
                               rf"({key_1} Residue)/(Total Residue)":[],
                               rf"({key_0} Residue)/(Total Residue)":[],
-                              "PSD Cut":[]}
+                              "PSD Cut":[],
+                              f"N_{key_1}":[],
+                              f"N_{key_0}":[]}
+        self.v_Energy = np.array([])
+        self.v_tags = np.array([])
 
         self.ax_ROC = None
         self.ax_PSD = None
@@ -33,6 +38,9 @@ class DiscriminationTools:
         self.key_1 = key_1
         self.global_PSD_cut = None
 
+        self.key_Energy = "Erec"
+        self.key_tag = "evtType"
+        self.key_PSD = "PSD"
 
     def GetPredictionData(self, path_prediction_file:str):
         with np.load( path_prediction_file, allow_pickle=True) as f:
@@ -44,6 +52,16 @@ class DiscriminationTools:
             except Exception as e:
                 print("Cannot get dir_n_samples!!! You need to set it by hand !!Continue")
                 pass
+
+            try:
+                self.dir_train = f["dir_train"].item()
+                print(self.dir_train.keys())
+            except Exception as e:
+                print("Cannot get dir_train!!! You need to set it by hand !!Continue")
+                pass
+
+            self.v_Energy = np.concatenate( (self.dir_train[self.key_Energy],self.dir_events[self.key_Energy]) )
+            self.v_tags = np.concatenate( ( self.dir_train[self.key_tag] , self.dir_events[self.key_tag] ) )
 
     def GetPSDDistribution(self, dir_events=None, v_tags=None, bins= np.linspace(0, 1, 100),ax=None,title_options="", *args, **kwargs):
         if v_tags is None:
@@ -133,16 +151,21 @@ class DiscriminationTools:
 
 
             self.PlotROCCurves(ax=ax_ROC, color=color, ls=ls, label=label, xlim=xlim, ylim=ylim)
-            self.MaximumSignificance(v_bkg_ineff, ax=ax_ROC, condition=label)
+
+            n_sig_in_EnergyBin = Counter( (self.v_Energy[self.v_tags==1]>bins_Energy[i_bin])&(self.v_Energy[self.v_tags==1]<bins_Energy[i_bin+1] ))[True]
+            n_bkg_in_EnergyBin = Counter( (self.v_Energy[self.v_tags==0]>bins_Energy[i_bin])&(self.v_Energy[self.v_tags==0]<bins_Energy[i_bin+1] ))[True]
+
+            self.MaximumSignificance( n_total_sig=n_sig_in_EnergyBin , n_total_bkg=n_bkg_in_EnergyBin, v_bkg_ineff=v_bkg_ineff, ax=ax_ROC, condition=label)
             if self.global_PSD_cut != None:
-                self.CertainPSDCut(self.global_PSD_cut, condition=label+"(Global Cut)")
+                self.CertainPSDCut(self.global_PSD_cut, n_sig=n_sig_in_EnergyBin,
+                                   n_bkg=n_bkg_in_EnergyBin,condition=label+"(Global Cut)")
             
         ax_ROC.legend()
         return ax_ROC
 
 
 
-    def MaximumSignificance(self,v_bkg_ineff=None,set_global_PSD_cut=False , *args, **kwargs):
+    def MaximumSignificance(self,n_total_sig=None, n_total_bkg=None, v_bkg_ineff=None,set_global_PSD_cut=False , *args, **kwargs):
         """
         Maximum Significance S/sqrt(S+B) to set PSD cut
         :param v_bkg_ineff: scan range of background inefficiency
@@ -156,27 +179,34 @@ class DiscriminationTools:
         v_PSD_cut = self.f_BkgIneff2PSDCut(v_bkg_ineff)
 
         #TODO: n_total_sig need to adjust with different energy bin!!!
-        n_total_sig = self.dir_n_samples["total"][1]
-        n_total_bkg = self.dir_n_samples["total"][0]
+        if n_total_bkg==None and n_total_sig==None:
+            n_total_sig = self.dir_n_samples["total"][1]
+            n_total_bkg = self.dir_n_samples["total"][0]
+
+
         significance = n_total_sig*v_sig_eff/np.sqrt( n_total_bkg*v_bkg_ineff + n_total_sig*v_sig_eff )
 
         index_max = np.argmax(significance)
-        self.CalculateEfficiency( v_PSD_cut[index_max], v_bkg_ineff[index_max], v_sig_eff[index_max],option="Optimized ",
+        self.CalculateEfficiency( v_PSD_cut[index_max], v_bkg_ineff[index_max], v_sig_eff[index_max],
+                                  n_total_sig=n_total_sig,
+                                  n_total_bkg=n_total_bkg,
+                                  option="Optimized ",
                                   *args, **kwargs)
 
         if set_global_PSD_cut:
             self.global_PSD_cut = v_PSD_cut[index_max]
 
-    def CertainPSDCut(self, PSD_cut, *args, **kwargs):
+    def CertainPSDCut(self, PSD_cut, n_sig, n_bkg,*args, **kwargs):
         bkg_ineff = self.f_PSDCut2BkgIneff(PSD_cut)
         sig_eff = self.f_BkgIneff2SigEff(bkg_ineff)
         self.CalculateEfficiency( PSD_cut, bkg_ineff, sig_eff,option="Certain PSD Cut ",
+                                  n_total_sig=n_sig, n_total_bkg=n_bkg,
                                   *args, **kwargs)
 
-    def CalculateEfficiency(self, PSD_cut, bkg_ineff, sig_eff, option="",ax=None,condition:str=""):
+    def CalculateEfficiency(self, PSD_cut, bkg_ineff, sig_eff, n_total_sig, n_total_bkg,option="",ax=None,condition:str=""):
 
-        n_total_sig = self.dir_n_samples["total"][1]
-        n_total_bkg = self.dir_n_samples["total"][0]
+        # n_total_sig = self.dir_n_samples["total"][1]
+        # n_total_bkg = self.dir_n_samples["total"][0]
 
         n_sig = len( self.dir_events["PSD"][self.dir_events["evtType"]==1] )
         n_bkg = len( self.dir_events["PSD"][self.dir_events["evtType"]==0] )
@@ -215,6 +245,9 @@ class DiscriminationTools:
         self.dir_eff_to_df[f"({self.key_1} Residue)/(Total Residue)"].append(str_ratio_sig2residue)
         self.dir_eff_to_df["index"].append(condition)
         self.dir_eff_to_df["PSD Cut"].append(f"{PSD_cut:.2g}")
+        self.dir_eff_to_df[f"N_{self.key_1}"].append(n_total_sig)
+        self.dir_eff_to_df[f"N_{self.key_0}"].append(n_total_bkg)
+        
 
         return sig_optimized, bkg_optimized, str_ratio_sig2residue, str_ratio_bkg2residue
 
@@ -225,6 +258,9 @@ class DiscriminationTools:
         :return:
         """
         self.dir_n_samples = copy(dir_n_samples)
+
+    def SetTrainDataset(self, dir_train:dict):
+        self.dir_train = copy( dir_train )
 
     def Legend(self):
         self.ax_ROC.legend()

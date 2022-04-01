@@ -58,8 +58,8 @@ if __name__ == "__main__":
     v_L_LS = [2]
     v_L_tank = [1]
     v_material = ["Acrylic"]
-    options = "-UseTank -optical -seed $1 -r_LS 2.5 -Add_ESR -d_PMT 3"
-    template_sub = "hep_sub {} -argu \"%{{ProcId}}\" -n 100 -m 4000 -e /dev/null\n"
+    options = "-UseTank -optical -seed $1 -r_LS 5 -Add_ESR -d_PMT 0.5"
+    template_sub = "hep_sub {} -argu \"%{{ProcId}}\" -n 100 -m 4000 -e /dev/null -wt short\n"
     for x in v_x_Beam:
         for material in v_material:
             for L_LS in v_L_LS:
@@ -71,7 +71,7 @@ if __name__ == "__main__":
                         root_file = template_outfile_root.format(dir_ion["name"][i]+name_suffix+"_$1")
                         job_file = template_outfile_job.format(dir_ion["name"][i]+name_suffix)
                         Z = float(dir_ion["input_list"][i].split(" ")[1])
-                        gen_scripts.GenMacFileCertainE(mac_file, dir_ion["input_list"][i], Ecertain=Z*dir_ion["BeamE[MeV/u]"][i],nEvts=20, pos_x=x)
+                        gen_scripts.GenMacFileCertainE(mac_file, dir_ion["input_list"][i], Ecertain=Z*dir_ion["BeamE[MeV/u]"][i],nEvts=10, pos_x=x)
 
                         gen_scripts.GenScripts(input_mac_file=mac_file, out_root_file=root_file, name_scripts=job_file, L_LS=L_LS, L_tank=L_tank,
                                                options=f"{options} {material_option}",template_sub=template_sub)

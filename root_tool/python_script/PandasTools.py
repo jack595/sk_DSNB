@@ -34,12 +34,13 @@ def AlignDirElements(dir_to_align:dict):
         dir_return[key] = [dir_to_align[key]]*n_evts
     return dir_return
 
-def PlotDataframeIntoPie(df):
+def PlotDataframeIntoPie(df, explode=None):
     fig2, ax2 = plt.subplots(figsize=(10, 10))
     theme = plt.get_cmap('hsv')
     colors = [theme(1. * i / len(df))
                              for i in range(len(df))]
-    explode = [0.01]*len(df)
+    if explode == None:
+        explode = [0.01]*len(df)
     df.plot.pie(autopct='%.2f%%',colors=colors,explode=explode)
 
 if __name__ == '__main__':

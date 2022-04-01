@@ -31,7 +31,7 @@ class TrainTool:
         self.map_tag_particles = {"pES":0, "eES":1}
         # self.map_tag_particles = {"pES":0, "IBDp":1}
         self.key_tag = "evtType"
-        self.ratio_split_for_train = 0.4
+        self.ratio_split_for_train = 0.45
         self.dir_PSD_diff_particle = {key:{} for key in self.map_tag_particles.keys()}
         self.dir_n_samples = {"train":{},"test":{}, "total":{}}
 
@@ -46,6 +46,7 @@ class TrainTool:
 
         # Training Settings
         self.normalized_input=False
+        self.append_cut_off_dir = True
         self.strategy = "Combine"
         self.path_model = "/afs/ihep.ac.cn/users/l/luoxj/PSD_Supernova/code/eESAndpESDiscrimination/"
         self.name_file_model = self.path_model+f"model_LowE_{self.strategy}{self.option_time_profile}.pkl"
@@ -190,7 +191,11 @@ class TrainTool:
 
         # Merge signal and background dataset into one dictionary
         self.dir_dataset_train = MergeEventsDictionary([dir_train_test[0] for dir_train_test in v_dict_train_and_test])
-        self.dir_dataset_test = MergeEventsDictionary([dir_train_test[1] for dir_train_test in v_dict_train_and_test]+[self.dir_cut_off])
+        if self.append_cut_off_dir:
+            self.dir_dataset_test = MergeEventsDictionary([dir_train_test[1] for dir_train_test in v_dict_train_and_test]+[self.dir_cut_off])
+        else:
+            self.dir_dataset_test = MergeEventsDictionary([dir_train_test[1] for dir_train_test in v_dict_train_and_test])
+
 
         # Shuffle Dataset
         ShuffleDataset(self.dir_dataset_train)
@@ -202,7 +207,7 @@ class TrainTool:
         self.target_test = self.dir_dataset_test[self.key_tag]
 
         # Clean Unused Dataset to Save memory
-        self.dir_dataset_train.clear()
+        # self.dir_dataset_train.clear()
         # self.dir_dataset_test.clear()
         self.dir_cut_off.clear()
         self.dir_PSD_diff_particle.clear()
@@ -282,7 +287,7 @@ class TrainTool:
         self.dir_dataset_test["PSD"] = np.array(predict_proba_1)
         if save_prediction:
             np.savez(f"{self.path_model}/predict_{self.strategy}{self.option_time_profile}.npz", dir_events=self.dir_dataset_test,
-                     dir_n_samples=self.dir_n_samples)
+                     dir_n_samples=self.dir_n_samples, dir_train=self.dir_dataset_train)
 
     def InterpolateToGetSigEff(self, v_eff_sig, v_eff_bkg, certain_eff_bkg=0.01):
         from scipy.interpolate import interp1d
