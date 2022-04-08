@@ -16,6 +16,7 @@ from AfterPulseDiscrimination.ExtractFeatureForAfterPulse import ExtractFeature
 from AfterPulseDiscrimination.ExtractFeaturesToStudyTruth import ExtractFeatureForTruth
 from DictTools import FilterEventsDict
 from NumpyTools import Replace
+from collections import Counter
 from AfterPulseDiscrimination.CommonVariables import CommonVariables
 
 if __name__ == "__main__":
@@ -56,9 +57,9 @@ if __name__ == "__main__":
                                                   return_list=False,n_entries_load=10000)
     else:
         dir_evts = LoadOneFileUproot(arg.template_path_PSDTools.format(arg.fileNo),     name_branch="evt",
-                                                   return_list=False)
+                                                       return_list=False)
         dir_map = LoadOneFileUproot(arg.template_path_evtTruth.format(arg.fileNo), name_branch='evtTruth',
-                                                  return_list=False)
+                                                      return_list=False)
 
     bins = np.loadtxt(f"/afs/ihep.ac.cn/users/l/luoxj/PSD_Supernova/myJUNOCommon/share/PSD/Bins_Setting{option_time_profile}.txt", delimiter=",")
 
@@ -70,6 +71,7 @@ if __name__ == "__main__":
             dir_variables,v_tags = ExtractFeature(dir_map, dir_evts, bins, v_tags, Ecut,
                                            t_length_buffer, save_h_time=arg.save_npz, save_truth=arg.save_truth)
 
+
             name_file = arg.template_outfile.replace(".root", ".npz").format("")
             np.savez(name_file, dir_variables=dir_variables)
             exit(0)
@@ -79,7 +81,6 @@ if __name__ == "__main__":
 
 
     # Separate different events into different TTrees
-    from collections import Counter
 
     for tree_tag in ["AfterPulse", "eES_pES"]:
         index_tag = [False]*len(dir_variables["tag"])

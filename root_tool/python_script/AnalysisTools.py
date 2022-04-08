@@ -14,11 +14,12 @@ import sys
 from PlotTools import GetListOfHist2DColor
 from matplotlib.colors import LogNorm
 from matplotlib.backends.backend_pdf import PdfPages
+from copy import copy
 
 sys.path.append("/afs/ihep.ac.cn/users/l/luoxj/root_tool/python_script/")
 
 def PlotTimeProfileAfterCut(df_variables:pd.DataFrame, bins ,index_cut,plot_hist2d=False, key_time="h_time_with_charge", v_tags=None,
-                            v_colors=None, n_to_plot=20, name_pdf=""):
+                            v_colors=None, n_to_plot=20, name_pdf="", key_tag="tag", logy=True, divide_bin_width=False, one_plot=False):
     if name_pdf == "":
         print_to_pdf = False
     else:
@@ -46,13 +47,16 @@ def PlotTimeProfileAfterCut(df_variables:pd.DataFrame, bins ,index_cut,plot_hist
 
     for i_tag, tag in enumerate( v_tags ):
         if not plot_hist2d and not print_to_pdf:
-            plt.figure()
-        df_variables_cut = df_variables[ (index_cut) & (df_variables["tag"]==tag) ]
+            if not one_plot:
+                plt.figure()
+        df_variables_cut = df_variables[ (index_cut) & (df_variables[key_tag]==tag) ]
         for i, (index, row) in enumerate( df_variables_cut.iterrows() ):
             if print_to_pdf and not plot_hist2d:
                 plt.figure()
 
-            h_time = row[key_time]
+            h_time = copy( row[key_time] )
+            if divide_bin_width:
+                h_time /= np.diff(bins)
 
             if plot_hist2d:
                 dir_bins[tag] += list(bins_center)
@@ -60,7 +64,8 @@ def PlotTimeProfileAfterCut(df_variables:pd.DataFrame, bins ,index_cut,plot_hist
             else:
                 plt.plot( bins_center, h_time/max(h_time), label=tag, color=v_colors[i_tag], linewidth=0.5)
 
-
+            if logy:
+                plt.semilogy()
             if not plot_hist2d:
                 LegendNotRepeated()
                 plt.xlabel("Time [ ns ]")

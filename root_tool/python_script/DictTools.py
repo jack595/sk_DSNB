@@ -18,3 +18,6 @@ def FilterEventsDict(dir_evts:dict, index:np.ndarray):
     for key, item in dir_evts.items():
         dir_evts_filter[key] = item[index]
     return dir_evts_filter
+
+def RenameDict(dict:dict, key_old, key_new):
+    dict[key_new] = dict.pop(key_old)

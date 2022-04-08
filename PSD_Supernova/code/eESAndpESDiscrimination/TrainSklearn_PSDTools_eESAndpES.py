@@ -19,6 +19,7 @@ from HistTools import GetBinCenter
 from PlotDetectorGeometry import GetR3
 from collections import Counter
 
+from copy import copy
 import pickle
 from NumpyTools import Replace,AlignEvents,SplitEventsDict,ShuffleDataset, MergeEventsDictionary, AlignEventsByTag
 
@@ -28,9 +29,11 @@ class TrainTool:
         self.dir_PSD_diff_particle = {}
         self.input_train = []
         self.target_train = []
-        self.map_tag_particles = {"pES":0, "eES":1}
+        self.map_tag_particles = {"pES":0, "eES":1, "IBDp":1}
+        self.dir_ratio_used = {"IBDp":0.01}
         # self.map_tag_particles = {"pES":0, "IBDp":1}
         self.key_tag = "evtType"
+        self.key_tag_truth = self.key_tag+"(Truth)"
         self.ratio_split_for_train = 0.45
         self.dir_PSD_diff_particle = {key:{} for key in self.map_tag_particles.keys()}
         self.dir_n_samples = {"train":{},"test":{}, "total":{}}
@@ -42,7 +45,7 @@ class TrainTool:
         self.bins_width = np.diff(self.bins)
 
         ## Set Filter For Events
-        self.filter = {"Erec": [0, 18], "R3": [0, 6000]}
+        self.filter = {"Erec": [0, np.inf], "R3": [0, 6000]}
 
         # Training Settings
         self.normalized_input=False
@@ -71,11 +74,18 @@ class TrainTool:
         self.dir_PSD_diff_particle = LoadFileListUprootOptimized(file_list,list_corresponding_keys=list_corresponding_keys,
                                     name_branch="evt", use_multiprocess=False)
 
+        # Cut Unused Events
+        for key_particle, ratio in self.dir_ratio_used:
+            for key,item in self.dir_PSD_diff_particle[key_particle].items():
+                self.dir_PSD_diff_particle[key_particle][key] = item[:int(ratio*len(item))]
+                print(len(self.dir_PSD_diff_particle[key_particle][key]))
+
         # Append Tags and R3 for the dataset
         for key,dir_PSD in self.dir_PSD_diff_particle.items():
             v_keys = list(dir_PSD.keys())
             self.dir_PSD_diff_particle[key][self.key_tag] = np.array([self.map_tag_particles[key]]*len(dir_PSD[v_keys[0]]))
             self.dir_PSD_diff_particle[key]["R3"] = np.sum( (dir_PSD["XYZ"]/1000)**2,axis=1)**(3/2)
+        
 
         print(self.dir_PSD_diff_particle.keys())
 
@@ -92,12 +102,13 @@ class TrainTool:
                 for j_tag, tag in enumerate(self.map_tag_particles.keys()):
                     for key in list(dir_PSDTools.keys())+self.list_keys_from_evtTruth+["R3"]:
                         self.dir_PSD_diff_particle[tag][key] = []
+                    self.dir_PSD_diff_particle[tag][self.key_tag_truth] = []
             #################################################################
 
             ############# Use events cut for dict ###########################
             for j_tag, tag in enumerate(self.map_tag_particles.keys()):
                 # Events Tag Cut for dict
-                dir_PSDTools_with_tag = {key:[] for key in dir_PSDTools.keys()}
+                dir_PSDTools_with_tag = {key:[] for key in list(dir_PSDTools.keys())}
                 dir_evtTruth_with_tag = {key:[] for key in dir_evtTruth.keys()}
 
                 index_tag = (dir_evtTruth["evtType"]==tag)
@@ -109,6 +120,7 @@ class TrainTool:
                 #### Merge some truth information ###################
                 for key in self.list_keys_from_evtTruth:
                     dir_PSDTools_with_tag[key] = dir_evtTruth_with_tag[key]
+                dir_PSDTools_with_tag[self.key_tag_truth] = copy(dir_PSDTools_with_tag[self.key_tag])
                 dir_PSDTools_with_tag[self.key_tag] = Replace(dir_PSDTools_with_tag[self.key_tag], self.map_tag_particles)
 
                 dir_PSDTools_with_tag["R3"] = []
@@ -116,7 +128,14 @@ class TrainTool:
                     dir_PSDTools_with_tag["R3"].append(np.sum((XYZ / 1000) ** 2) ** (3 / 2))
                 dir_PSDTools_with_tag["R3"] = np.array(dir_PSDTools_with_tag["R3"])
 
+                # Cut Unused Events
+                if tag in self.dir_ratio_used.keys():
+                    for key,item in dir_PSDTools_with_tag.items():
+                        dir_PSDTools_with_tag[key] = item[:int(self.dir_ratio_used[tag]*len(item))]
+
+
                 self.dir_PSD_diff_particle[tag] = MergeEventsDictionary([self.dir_PSD_diff_particle[tag], dir_PSDTools_with_tag])
+
             ##################################################################
 
         for tag,dir_PSD  in self.dir_PSD_diff_particle.items():
@@ -195,6 +214,20 @@ class TrainTool:
             self.dir_dataset_test = MergeEventsDictionary([dir_train_test[1] for dir_train_test in v_dict_train_and_test]+[self.dir_cut_off])
         else:
             self.dir_dataset_test = MergeEventsDictionary([dir_train_test[1] for dir_train_test in v_dict_train_and_test])
+
+
+        # Plot Energy of Training Samples
+        plt.figure()
+        bins_Energy = np.linspace( min(self.dir_dataset_train["Erec"]), max(self.dir_dataset_train["Erec"]),100)
+        for particle in self.map_tag_particles.keys():
+            print( particle, self.dir_dataset_train["Erec"][ np.array(self.dir_dataset_train[self.key_tag_truth])==particle ])
+            plt.hist(self.dir_dataset_train["Erec"][ np.array(self.dir_dataset_train[self.key_tag_truth])==particle ],
+                     bins=bins_Energy,histtype="step", label=particle)
+            plt.legend()
+            plt.title("Energy Spectrum")
+            plt.xlabel("$E_{rec}$ [ MeV ]")
+            plt.ylabel("N of Events")
+            plt.semilogy()
 
 
         # Shuffle Dataset

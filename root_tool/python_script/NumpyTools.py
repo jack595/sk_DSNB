@@ -11,6 +11,10 @@ from LoadMultiFiles import MergeEventsDictionary
 import math
 
 plt.style.use("/afs/ihep.ac.cn/users/l/luoxj/Style/Paper.mplstyle")
+def NumToStringWithSuffix(i):
+    ordinal = lambda n: "%d%s" % (n,"tsnrhtdd"[(n//10%10!=1)*(n%10<4)*n%10::4])
+    return ordinal(int(i))
+
 def ReBin(v:np.ndarray):
     length_v = len(v)
     v_odd = v[0:length_v:2]

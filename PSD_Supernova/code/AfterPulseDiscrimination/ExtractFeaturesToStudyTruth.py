@@ -8,10 +8,12 @@ import numpy as np
 
 plt.style.use("/afs/ihep.ac.cn/users/l/luoxj/Style/Paper.mplstyle")
 import sys
+import pandas as pd
 
 sys.path.append("/afs/ihep.ac.cn/users/l/luoxj/root_tool/python_script/")
 from NumpyTools import weighted_kurtosis, weighted_skew
 from ExtractFeatureForAfterPulse import GetTimeInterval
+
 
 
 def ExtractFeatureForTruth(dir_map:dict, dir_evts:dict,bins,v_tags_save=None, Ecut=None, t_length_buffer=1e6,
@@ -28,7 +30,7 @@ def ExtractFeatureForTruth(dir_map:dict, dir_evts:dict,bins,v_tags_save=None, Ec
 
 
     if v_tags_save == None:
-        v_tags_save = set(dir_map["tag"])
+        v_tags_save = set(dir_map["evtType"])
 
     dir_map["TotalCharge"] = []
     for v_time in dir_evts["h_time_with_charge"]:
@@ -65,3 +67,6 @@ def ExtractFeatureForTruth(dir_map:dict, dir_evts:dict,bins,v_tags_save=None, Ec
 
 
         return dir_variables
+
+
+

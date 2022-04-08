@@ -62,7 +62,7 @@ def MergeEventsDictionary(v_dir:list):
     for dir in v_dir:
         if keys_one_dir != dir.keys():
             print(keys_one_dir, " !=  ", list(dir.keys()))
-            print("ERROR: Input dictionaries should have the same keys!!!!!!!!!!!!")
+            print("ERROR in MergeEventsDictionary(): Input dictionaries should have the same keys!!!!!!!!!!!!")
             exit(1)
 
     # Initialization
@@ -169,7 +169,8 @@ def LoadOneFileUproot(name_file:str, name_branch:str, list_branch_filter:list=No
     return dir_event
 
 def LoadOneFileUprootCertainEntries(name_file:str, name_branch:str,n_entries_load:int=100,
-                                    list_load_branch:list=None,list_branch_filter:list=None, return_list:bool=False):
+                                    list_load_branch:list=None,list_branch_filter:list=None, return_list:bool=False,
+                                    start_i=0):
     """
 
     :param name_file:
@@ -180,7 +181,9 @@ def LoadOneFileUprootCertainEntries(name_file:str, name_branch:str,n_entries_loa
     :return:
     """
     dir_event = {}
-    for iter in up.iterate(f"{name_file}:{name_branch}", list_load_branch, step_size=n_entries_load):
+    for i, iter in enumerate( up.iterate(f"{name_file}:{name_branch}", list_load_branch, step_size=n_entries_load) ):
+        if i!= start_i:
+            continue
         tree = iter
         for key in tree.fields:
             if (not list_branch_filter is None) and (key in list_branch_filter):

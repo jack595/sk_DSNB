@@ -7,6 +7,7 @@ import numpy as np
 import sys
 from copy import copy
 import matplotlib.pylab as plt
+import pandas as pd
 
 sys.path.append("/afs/ihep.ac.cn/users/l/luoxj/root_tool/python_script/")
 
@@ -42,6 +43,13 @@ def PlotDataframeIntoPie(df, explode=None):
     if explode == None:
         explode = [0.01]*len(df)
     df.plot.pie(autopct='%.2f%%',colors=colors,explode=explode)
+
+def DataFrameToDict(df:pd.DataFrame):
+    dir_return = {}
+    for column in df.columns:
+        dir_return[column] = np.array( df[column] )
+    return dir_return
+
 
 if __name__ == '__main__':
     dir = {"A":[1,3,5,5], "B":"quartz", "C":np.array([5,6, 2,5])}

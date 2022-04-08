@@ -14,6 +14,7 @@ import pandas as pd
 from IPython.display import display
 from HistTools import GetBinCenter
 from collections import Counter
+from IPython.display import display
 
 sys.path.append("/afs/ihep.ac.cn/users/l/luoxj/root_tool/python_script/")
 
@@ -63,6 +64,7 @@ class DiscriminationTools:
             self.v_Energy = np.concatenate( (self.dir_train[self.key_Energy],self.dir_events[self.key_Energy]) )
             self.v_tags = np.concatenate( ( self.dir_train[self.key_tag] , self.dir_events[self.key_tag] ) )
 
+
     def GetPSDDistribution(self, dir_events=None, v_tags=None, bins= np.linspace(0, 1, 100),ax=None,title_options="", *args, **kwargs):
         if v_tags is None:
             v_tags = [self.key_0, self.key_1]
@@ -77,12 +79,24 @@ class DiscriminationTools:
         self.bins = bins
         self.bins_center = GetBinCenter(bins)
 
+        plt.figure()
+        for i, key in enumerate( set(dir_events[f"{self.key_tag}(Truth)"])):
+            plt.hist( (dir_events["PSD"][dir_events[f"{self.key_tag}(Truth)"]==key]) ,bins=bins,
+                     histtype="step", label=key,*args, **kwargs)
+        plt.semilogy()
+        plt.legend()
+        plt.xlabel("PSD Output")
+        plt.ylabel("N of Events")
+        plt.title("PSD Distribution"+title_options)
+
+        plt.figure()
         for i, key in enumerate([0,1]):
             self.dir_hist_PSD[key] = ax.hist( (dir_events["PSD"][dir_events["evtType"]==key]) ,bins=bins,
                      histtype="step", label=v_tags[i],*args, **kwargs)
         ax.semilogy()
         ax.legend()
         ax.set_xlabel("PSD Output")
+        ax.set_ylabel("N of Events")
         ax.set_title("PSD Distribution"+title_options)
 
     def PlotROCCurves(self,xlim=None,ylim=None, ax=None, *args, **kargs):
@@ -110,7 +124,7 @@ class DiscriminationTools:
         ax.plot(eff_bkg,eff_sig, *args, **kargs)
         ax.set_xlabel(f'{self.key_0} Inefficiency')
         ax.set_ylabel(f'{self.key_1} efficiency')
-        ax.set_title("Efficiency Curves")
+        ax.set_title("ROC Curves")
 
         if xlim is not None:
             ax.set_xlim(xlim[0], xlim[1])
@@ -119,7 +133,7 @@ class DiscriminationTools:
             ax.set_ylim(ylim[0], ylim[1])
 
     def PlotROCCurvesDiffEBins(self, bins_Energy, key_Energy="Erec",option="", AppendAnothorOptionLine=False, label_AppendOption=None,
-                               v_colors=None, ls="-", ax_ROC=None, xlim=None, ylim=None, v_bkg_ineff=None):
+                               v_colors=None, ls="-", ax_ROC=None, xlim=None, ylim=None, v_bkg_ineff=None, max_significance=True):
         if ax_ROC==None:
             plt.figure("ROC")
             ax_ROC = plt.subplot(111)
@@ -155,10 +169,12 @@ class DiscriminationTools:
             n_sig_in_EnergyBin = Counter( (self.v_Energy[self.v_tags==1]>bins_Energy[i_bin])&(self.v_Energy[self.v_tags==1]<bins_Energy[i_bin+1] ))[True]
             n_bkg_in_EnergyBin = Counter( (self.v_Energy[self.v_tags==0]>bins_Energy[i_bin])&(self.v_Energy[self.v_tags==0]<bins_Energy[i_bin+1] ))[True]
 
-            self.MaximumSignificance( n_total_sig=n_sig_in_EnergyBin , n_total_bkg=n_bkg_in_EnergyBin, v_bkg_ineff=v_bkg_ineff, ax=ax_ROC, condition=label)
+            if max_significance:
+                self.MaximumSignificance( n_total_sig=n_sig_in_EnergyBin , n_total_bkg=n_bkg_in_EnergyBin, v_bkg_ineff=v_bkg_ineff, ax=ax_ROC, condition=label)
             if self.global_PSD_cut != None:
                 self.CertainPSDCut(self.global_PSD_cut, n_sig=n_sig_in_EnergyBin,
-                                   n_bkg=n_bkg_in_EnergyBin,condition=label+"(Global Cut)")
+                                   n_bkg=n_bkg_in_EnergyBin,condition=label+( "(Global Cut)" if  max_significance else ""),
+                                   ax=(None if max_significance else ax_ROC))
             
         ax_ROC.legend()
         return ax_ROC
@@ -178,13 +194,13 @@ class DiscriminationTools:
         v_sig_eff = self.f_BkgIneff2SigEff(v_bkg_ineff)
         v_PSD_cut = self.f_BkgIneff2PSDCut(v_bkg_ineff)
 
-        #TODO: n_total_sig need to adjust with different energy bin!!!
         if n_total_bkg==None and n_total_sig==None:
             n_total_sig = self.dir_n_samples["total"][1]
             n_total_bkg = self.dir_n_samples["total"][0]
 
 
         significance = n_total_sig*v_sig_eff/np.sqrt( n_total_bkg*v_bkg_ineff + n_total_sig*v_sig_eff )
+        # significance = (n_total_sig*v_sig_eff)/(n_total_bkg*v_bkg_ineff  )
 
         index_max = np.argmax(significance)
         self.CalculateEfficiency( v_PSD_cut[index_max], v_bkg_ineff[index_max], v_sig_eff[index_max],
@@ -243,7 +259,7 @@ class DiscriminationTools:
         self.dir_eff_to_df[f"{self.key_0} Ineff."].append(bkg_optimized)
         self.dir_eff_to_df[f"({self.key_0} Residue)/(Total Residue)"].append(str_ratio_bkg2residue)
         self.dir_eff_to_df[f"({self.key_1} Residue)/(Total Residue)"].append(str_ratio_sig2residue)
-        self.dir_eff_to_df["index"].append(condition)
+        self.dir_eff_to_df["index"].append(condition.replace("$E_{rec}$", "Erec"))
         self.dir_eff_to_df["PSD Cut"].append(f"{PSD_cut:.2g}")
         self.dir_eff_to_df[f"N_{self.key_1}"].append(n_total_sig)
         self.dir_eff_to_df[f"N_{self.key_0}"].append(n_total_bkg)
@@ -271,10 +287,21 @@ class DiscriminationTools:
         Summary Efficiency Table for executed MaximumSignificance()
         :return:
         """
-
         df_eff = pd.DataFrame.from_dict(self.dir_eff_to_df)
+        df_eff.columns.name = "Test Samples"
         self.Legend()
+
         return  df_eff
+
+    def PrintSamplesInformation(self):
+        from collections import Counter
+        print( Counter( self.dir_train[f"{self.key_tag}(Truth)"] ) )
+        df_train = pd.DataFrame.from_dict( Counter(self.dir_train[f"{self.key_tag}(Truth)"]), orient='index',columns=["Train"])
+
+        df_test = pd.DataFrame.from_dict( Counter(self.dir_events[f"{self.key_tag}(Truth)"]), orient='index', columns=["Test"])
+
+        df_samples = pd.concat([df_train, df_test],axis=1).T
+        display( df_samples  )
 
 if __name__ == '__main__':
     discrimination_tool = DiscriminationTools(key_0="pES", key_1="eES")
