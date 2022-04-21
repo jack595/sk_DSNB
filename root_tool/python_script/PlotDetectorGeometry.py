@@ -17,6 +17,9 @@ def GetR3(XYZ):
     XYZ = np.array(XYZ)
     return np.sum((XYZ/1e3)**2)**(3/2)
 
+def GetR3_XYZ(X, Y, Z):
+    return ( X**2+Y**2+Z**2 )**1.5
+
 # 3D detector sphere
 def PlotBaseSphere(ax:Axes3D=None, R=17.5):
     # draw sphere

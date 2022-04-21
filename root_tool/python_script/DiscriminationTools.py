@@ -57,15 +57,18 @@ class DiscriminationTools:
             try:
                 self.dir_train = f["dir_train"].item()
                 print(self.dir_train.keys())
+                self.v_Energy = np.concatenate((self.dir_train[self.key_Energy], self.dir_events[self.key_Energy]))
+                self.v_tags = np.concatenate((self.dir_train[self.key_tag], self.dir_events[self.key_tag]))
             except Exception as e:
+                self.v_Energy = self.dir_events[self.key_Energy]
+                self.v_tags = self.dir_events[self.key_tag]
                 print("Cannot get dir_train!!! You need to set it by hand !!Continue")
                 pass
 
-            self.v_Energy = np.concatenate( (self.dir_train[self.key_Energy],self.dir_events[self.key_Energy]) )
-            self.v_tags = np.concatenate( ( self.dir_train[self.key_tag] , self.dir_events[self.key_tag] ) )
 
 
     def GetPSDDistribution(self, dir_events=None, v_tags=None, bins= np.linspace(0, 1, 100),ax=None,title_options="", *args, **kwargs):
+        from HistTools import PlotHistNormByHits
         if v_tags is None:
             v_tags = [self.key_0, self.key_1]
         if ax is None:
@@ -79,20 +82,24 @@ class DiscriminationTools:
         self.bins = bins
         self.bins_center = GetBinCenter(bins)
 
-        plt.figure()
-        for i, key in enumerate( set(dir_events[f"{self.key_tag}(Truth)"])):
-            plt.hist( (dir_events["PSD"][dir_events[f"{self.key_tag}(Truth)"]==key]) ,bins=bins,
-                     histtype="step", label=key,*args, **kwargs)
-        plt.semilogy()
-        plt.legend()
-        plt.xlabel("PSD Output")
-        plt.ylabel("N of Events")
-        plt.title("PSD Distribution"+title_options)
+        if f"{self.key_tag}(Truth)" in dir_events:
+            plt.figure()
+            for i, key in enumerate( set(dir_events[f"{self.key_tag}(Truth)"])):
+                plt.hist( (dir_events["PSD"][dir_events[f"{self.key_tag}(Truth)"]==key]) ,bins=bins,
+                         histtype="step", label=key,*args, **kwargs)
+            plt.semilogy()
+            plt.legend()
+            plt.xlabel("PSD Output")
+            plt.ylabel("N of Events")
+            plt.title("PSD Distribution"+title_options)
 
         plt.figure()
         for i, key in enumerate([0,1]):
-            self.dir_hist_PSD[key] = ax.hist( (dir_events["PSD"][dir_events["evtType"]==key]) ,bins=bins,
-                     histtype="step", label=v_tags[i],*args, **kwargs)
+            # self.dir_hist_PSD[key] = ax.hist( (dir_events["PSD"][dir_events[self.key_tag]==key]) ,bins=bins,
+            #          histtype="step", label=v_tags[i],*args, **kwargs)
+            self.dir_hist_PSD[key] = PlotHistNormByHits(  (dir_events["PSD"][dir_events[self.key_tag]==key]) ,bins=bins,
+                                                          ax=ax, label=v_tags[i],*args, **kwargs)
+        ax.set_xlim(0,1)
         ax.semilogy()
         ax.legend()
         ax.set_xlabel("PSD Output")
@@ -125,6 +132,7 @@ class DiscriminationTools:
         ax.set_xlabel(f'{self.key_0} Inefficiency')
         ax.set_ylabel(f'{self.key_1} efficiency')
         ax.set_title("ROC Curves")
+        ax.legend()
 
         if xlim is not None:
             ax.set_xlim(xlim[0], xlim[1])
@@ -132,7 +140,7 @@ class DiscriminationTools:
         if ylim is not None:
             ax.set_ylim(ylim[0], ylim[1])
 
-    def PlotROCCurvesDiffEBins(self, bins_Energy, key_Energy="Erec",option="", AppendAnothorOptionLine=False, label_AppendOption=None,
+    def PlotROCCurvesDiffEBins(self, bins_Energy, option="", AppendAnothorOptionLine=False, label_AppendOption=None,
                                v_colors=None, ls="-", ax_ROC=None, xlim=None, ylim=None, v_bkg_ineff=None, max_significance=True):
         if ax_ROC==None:
             plt.figure("ROC")
@@ -155,7 +163,7 @@ class DiscriminationTools:
 
             fig_PSD,ax_PSD = plt.subplots(1,1)
             dir_events_in_quench_bins = {}
-            index_energy = ( self.dir_events[key_Energy]<bins_Energy[i_bin+1] ) & ( self.dir_events[key_Energy]>bins_Energy[i_bin] )
+            index_energy = ( self.dir_events[self.key_Energy]<bins_Energy[i_bin+1] ) & ( self.dir_events[self.key_Energy]>bins_Energy[i_bin] )
             for key in self.dir_events.keys():
                 dir_events_in_quench_bins[key] = self.dir_events[key][index_energy]
 
@@ -221,17 +229,11 @@ class DiscriminationTools:
 
     def CalculateEfficiency(self, PSD_cut, bkg_ineff, sig_eff, n_total_sig, n_total_bkg,option="",ax=None,condition:str=""):
 
-        # n_total_sig = self.dir_n_samples["total"][1]
-        # n_total_bkg = self.dir_n_samples["total"][0]
-
-        n_sig = len( self.dir_events["PSD"][self.dir_events["evtType"]==1] )
-        n_bkg = len( self.dir_events["PSD"][self.dir_events["evtType"]==0] )
-
         print(f"PSD Cut: {PSD_cut:.3g}")
 
         # Calculate Signal Efficiency and Background Inefficiency
-        bkg_optimized = f"{bkg_ineff*100:.3f} % +- {np.sqrt( bkg_ineff*(1-bkg_ineff)*n_bkg )/n_bkg *100:.2g}"
-        sig_optimized = f"{sig_eff*100:.3f} % +- {np.sqrt( sig_eff*(1-sig_eff)*n_sig )/n_sig *100:.2g}"
+        bkg_optimized = f"{bkg_ineff*100:.3f}  +- {np.sqrt( bkg_ineff*(1-bkg_ineff)*n_total_bkg )/n_total_bkg *100:.2g} %"
+        sig_optimized = f"{sig_eff*100:.3f}  +- {np.sqrt( sig_eff*(1-sig_eff)*n_total_sig )/n_total_sig *100:.2g} %"
 
 
         print(f"{option} Efficiency:\n",f"{self.key_0} inefficiency:\t",bkg_optimized,
@@ -242,8 +244,8 @@ class DiscriminationTools:
         ratio_sig2residue = n_total_sig*sig_eff/n_total_residue
         ratio_bkg2residue = n_total_bkg*bkg_ineff/n_total_residue
 
-        str_ratio_sig2residue = f"{ratio_sig2residue*100:.3f} % +- {np.sqrt(ratio_sig2residue*(1-ratio_sig2residue)*n_total_residue)/n_total_residue*100:.2g}"
-        str_ratio_bkg2residue = f"{ratio_bkg2residue*100:.3f} % +- {np.sqrt(ratio_bkg2residue*(1-ratio_bkg2residue)*n_total_residue)/n_total_residue*100:.2g}"
+        str_ratio_sig2residue = f"{ratio_sig2residue*100:.3f} +- {np.sqrt(ratio_sig2residue*(1-ratio_sig2residue)*n_total_residue)/n_total_residue*100:.2g} %"
+        str_ratio_bkg2residue = f"{ratio_bkg2residue*100:.3f} +- {np.sqrt(ratio_bkg2residue*(1-ratio_bkg2residue)*n_total_residue)/n_total_residue*100:.2g} %"
 
 
         print(f"\n{option} Ratio of Residue:\n", f"{self.key_0} Ratio:\t", str_ratio_bkg2residue,
@@ -259,7 +261,7 @@ class DiscriminationTools:
         self.dir_eff_to_df[f"{self.key_0} Ineff."].append(bkg_optimized)
         self.dir_eff_to_df[f"({self.key_0} Residue)/(Total Residue)"].append(str_ratio_bkg2residue)
         self.dir_eff_to_df[f"({self.key_1} Residue)/(Total Residue)"].append(str_ratio_sig2residue)
-        self.dir_eff_to_df["index"].append(condition.replace("$E_{rec}$", "Erec"))
+        self.dir_eff_to_df["index"].append(condition.replace("$E_{rec}$", self.key_Energy))
         self.dir_eff_to_df["PSD Cut"].append(f"{PSD_cut:.2g}")
         self.dir_eff_to_df[f"N_{self.key_1}"].append(n_total_sig)
         self.dir_eff_to_df[f"N_{self.key_0}"].append(n_total_bkg)

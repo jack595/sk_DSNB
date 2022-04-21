@@ -50,8 +50,18 @@ def GetHist2DProjectionY(h_2d_input:np.ndarray, h_edges_x:np.ndarray, h_edges_y:
         plt.step(h_center_x, h_projection,where="mid", color="black" )
     return (h_center_x, h_projection)
 
-def RedrawHistFrom_plt_hist(hist, *args, **kargs):
-    plt.step(GetBinCenter(hist[1]), hist[0],where="mid", *args, **kargs)
+def RedrawHistFrom_plt_hist(hist, ax=None, *args, **kargs):
+    if ax==None:
+        plt.step(GetBinCenter(hist[1]), hist[0],where="mid", *args, **kargs)
+    else:
+        ax.step(GetBinCenter(hist[1]), hist[0],where="mid", *args, **kargs)
+
+def PlotHistNormByHits(x, bins=None, ax=None ,*args, **kargs):
+    hist = np.histogram(x, bins=bins)
+    hist_norm = (hist[0]/len(x), hist[1])
+    RedrawHistFrom_plt_hist(hist_norm, ax,  *args, **kargs)
+    return hist_norm
+
 
 def GetMaxArgOfHist(v_data, bins=100):
     hist =  np.histogram(v_data, bins=bins)
