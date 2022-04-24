@@ -13,10 +13,15 @@ import sys
 sys.path.append("/afs/ihep.ac.cn/users/l/luoxj/root_tool/python_script/")
 
 from wavedumpReader import DataFile
-def WaveDumpReader(path_file:str, nEvts:int=-1, with_header=True,
-                   return_Dataframe=True):
+def WaveDumpReader(path_file:str, nEvts:int=-1, return_Dataframe=True):
+    """
+
+    :param path_file: output from DT5751, binary file
+    :param nEvts: N of events to be loaded
+    :param return_Dataframe: return dataframe or dict
+    :return:
+    """
     reader = DataFile(path_file)
-    v2d_waveforms = []
     dir_data = {"boardID":[],  "filePath":[],"channel":[], "pattern":[], "eventCounter":[],
                 "triggerTimeTag":[], "triggerTime":[], "waveform":[]}
     i_event = 0
@@ -44,21 +49,3 @@ def WaveDumpReader(path_file:str, nEvts:int=-1, with_header=True,
         return pd.DataFrame.from_dict(dir_data)
     else:
         return dir_data
-
-    # plt.plot(trigger.trace)
-
-
-    # with open(path_file, "rb") as f:
-    #     if with_header:
-    #         i0, i1, i2, i3, i4, i5 = np.fromfile(f, dtype='I', count=6)
-    #     else:
-    #         print("WaveDump Reader without header haven't been implemented yet.")
-    #         exit(0)
-    #
-    #     eventSize = (i0 - 24) // 2
-    #     boardId = i1
-    #     pattern = i2
-    #     channel = i3
-    #     eventCounter = i4
-    #     triggerTimeTag = i5
-#
