@@ -141,10 +141,19 @@ class DiscriminationTools:
             ax.set_ylim(ylim[0], ylim[1])
 
     def PlotROCCurvesDiffEBins(self, bins_Energy, option="", AppendAnothorOptionLine=False, label_AppendOption=None,
-                               v_colors=None, ls="-", ax_ROC=None, xlim=None, ylim=None, v_bkg_ineff=None, max_significance=True):
+                               v_colors=None, ls="-", ax_ROC=None, xlim=None, ylim=None, max_significance=True,
+                               ax_eff=None):
+        if np.any(ax_eff) == None:
+            fig, ax_eff = plt.subplots(2)
+
         if ax_ROC==None:
             plt.figure("ROC")
             ax_ROC = plt.subplot(111)
+
+        v_sig_eff = []
+        v_bkg_ineff = []
+        v_err_sig_eff = []
+        v_err_bkg_ineff = []
 
         for i_bin in range( len(bins_Energy)-1 ):
             if AppendAnothorOptionLine:
@@ -180,14 +189,38 @@ class DiscriminationTools:
             if max_significance:
                 self.MaximumSignificance( n_total_sig=n_sig_in_EnergyBin , n_total_bkg=n_bkg_in_EnergyBin, v_bkg_ineff=v_bkg_ineff, ax=ax_ROC, condition=label)
             if self.global_PSD_cut != None:
-                self.CertainPSDCut(self.global_PSD_cut, n_sig=n_sig_in_EnergyBin,
-                                   n_bkg=n_bkg_in_EnergyBin,condition=label+( "(Global Cut)" if  max_significance else ""),
-                                   ax=(None if max_significance else ax_ROC))
-            
+                sig_eff, bkg_ineff, err_sig_eff, err_bkg_ineff  =    \
+                                        self.CertainPSDCut(self.global_PSD_cut, n_sig=n_sig_in_EnergyBin,
+                                        n_bkg=n_bkg_in_EnergyBin,condition=label+( "(Global Cut)" if  max_significance else ""),
+                                        ax=(None if max_significance else ax_ROC))
+                v_sig_eff.append( sig_eff )
+                v_bkg_ineff.append( bkg_ineff )
+                v_err_sig_eff.append( err_sig_eff )
+                v_err_bkg_ineff.append( err_bkg_ineff )
+
+        self.PlotEnergyDependentEff( bins_Energy, v_sig_eff, v_bkg_ineff,
+                                     v_err_sig_eff, v_err_bkg_ineff, ax_eff)
+
         ax_ROC.legend()
         return ax_ROC
 
-
+    def PlotEnergyDependentEff(self, bins_Energy, v_sig_eff, v_bkg_ineff,
+                               v_err_sig_eff, v_err_bkg_ineff,
+                               ax_eff):
+        from PlotErrorBar import PlotErrorBandWithBinEdge
+        v_sig_eff = np.array(v_sig_eff)
+        v_err_sig_eff = np.array(v_err_sig_eff)
+        v_bkg_ineff = np.array(v_bkg_ineff)
+        v_err_bkg_ineff = np.array(v_err_bkg_ineff)
+        ax_eff[0].step(GetBinCenter(bins_Energy), v_sig_eff,where="mid")
+        ax_eff[1].step(GetBinCenter(bins_Energy), v_bkg_ineff,where="mid")
+        PlotErrorBandWithBinEdge( bins_Energy, v_sig_eff-v_err_sig_eff,
+                                  v_sig_eff+v_err_sig_eff, ax=ax_eff[0])
+        PlotErrorBandWithBinEdge( bins_Energy, v_bkg_ineff-v_err_bkg_ineff,
+                                  v_bkg_ineff+v_err_bkg_ineff, ax=ax_eff[1])
+        ax_eff[1].set_xlabel("Reconstruct Energy [ MeV ]")
+        ax_eff[0].set_ylabel("Signal Eff. (%)")
+        ax_eff[1].set_ylabel("Bkg. Ineff. (%)")
 
     def MaximumSignificance(self,n_total_sig=None, n_total_bkg=None, v_bkg_ineff=None,set_global_PSD_cut=False , *args, **kwargs):
         """
@@ -223,17 +256,21 @@ class DiscriminationTools:
     def CertainPSDCut(self, PSD_cut, n_sig, n_bkg,*args, **kwargs):
         bkg_ineff = self.f_PSDCut2BkgIneff(PSD_cut)
         sig_eff = self.f_BkgIneff2SigEff(bkg_ineff)
-        self.CalculateEfficiency( PSD_cut, bkg_ineff, sig_eff,option="Certain PSD Cut ",
-                                  n_total_sig=n_sig, n_total_bkg=n_bkg,
-                                  *args, **kwargs)
+        err_sig_eff, err_bkg_ineff =    self.CalculateEfficiency( PSD_cut, bkg_ineff, sig_eff,option="Certain PSD Cut ",
+                                        n_total_sig=n_sig, n_total_bkg=n_bkg,
+                                        *args, **kwargs)
+        return sig_eff*100, bkg_ineff*100, err_sig_eff, err_bkg_ineff
+
 
     def CalculateEfficiency(self, PSD_cut, bkg_ineff, sig_eff, n_total_sig, n_total_bkg,option="",ax=None,condition:str=""):
 
         print(f"PSD Cut: {PSD_cut:.3g}")
 
         # Calculate Signal Efficiency and Background Inefficiency
-        bkg_optimized = f"{bkg_ineff*100:.3f}  +- {np.sqrt( bkg_ineff*(1-bkg_ineff)*n_total_bkg )/n_total_bkg *100:.2g} %"
-        sig_optimized = f"{sig_eff*100:.3f}  +- {np.sqrt( sig_eff*(1-sig_eff)*n_total_sig )/n_total_sig *100:.2g} %"
+        err_bkg_optimized = np.sqrt( bkg_ineff*(1-bkg_ineff)*n_total_bkg )/n_total_bkg *100
+        err_sig_optimized = np.sqrt( sig_eff*(1-sig_eff)*n_total_sig )/n_total_sig *100
+        bkg_optimized = f"{bkg_ineff*100:.3f}  +- {err_bkg_optimized:.2g} %"
+        sig_optimized = f"{sig_eff*100:.3f}  +- {err_sig_optimized:.2g} %"
 
 
         print(f"{option} Efficiency:\n",f"{self.key_0} inefficiency:\t",bkg_optimized,
@@ -267,7 +304,7 @@ class DiscriminationTools:
         self.dir_eff_to_df[f"N_{self.key_0}"].append(n_total_bkg)
         
 
-        return sig_optimized, bkg_optimized, str_ratio_sig2residue, str_ratio_bkg2residue
+        return err_sig_optimized, err_bkg_optimized
 
     def SetNSamplesDict(self, dir_n_samples:dict):
         """

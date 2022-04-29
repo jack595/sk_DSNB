@@ -11,6 +11,9 @@ plt.style.use("/afs/ihep.ac.cn/users/l/luoxj/Style/Paper.mplstyle")
 import sys
 
 sys.path.append("/afs/ihep.ac.cn/users/l/luoxj/root_tool/python_script/")
+import more_itertools as mit
+from copy import copy
+
 
 from wavedumpReader import DataFile
 def WaveDumpReader(path_file:str, nEvts:int=-1, return_Dataframe=True):
@@ -49,3 +52,128 @@ def WaveDumpReader(path_file:str, nEvts:int=-1, return_Dataframe=True):
         return pd.DataFrame.from_dict(dir_data)
     else:
         return dir_data
+
+def Workflow_WaveformRec(df_data:pd.DataFrame, n_baseline=100, plot_check=False, negative=True):
+    """
+    Waveform Reconstruction for data from WaveDumpReader
+    :param df_data: data returned from WaveDumpReader
+    :param n_baseline: n of points to get baseline
+    :return:
+    """
+    SubtractBaseline(df_data, n_baseline=n_baseline, negative=negative)
+    dir_TQ_pairs = {}
+    for wave in df_data["waveform_sub_base"]:
+        dir_TQ_pairs_aWaveform = WaveformRec(wave, n_baseline=n_baseline,plot_check=plot_check)
+
+        # if dir_TQ_pairs is empty, initialize it keys with return dict by WaveformRec()
+        if not dir_TQ_pairs:
+            for key in dir_TQ_pairs_aWaveform.keys():
+                dir_TQ_pairs[key] = []
+
+        # Append reconstruct TQ into dir_TQ_pairs
+        for key in dir_TQ_pairs_aWaveform.keys():
+            dir_TQ_pairs[key].append( dir_TQ_pairs_aWaveform[key] )
+
+
+    # Update TQ in df_data
+    df_TQ = pd.DataFrame.from_dict( dir_TQ_pairs )
+    df_data = df_data.join(df_TQ)
+    print(df_data.columns)
+    index_withTQ = df_data.apply( lambda row: ( False if len(row["T"])==0 else True),axis=1 )
+    return df_data[index_withTQ]
+
+
+def SubtractBaseline(df_data, n_baseline=100, negative=True):
+    polarity = (-1 if negative else 1)
+    v2d_subtract_baseline = []
+    for i, wave in enumerate( df_data["waveform"] ):
+        baseline = np.mean(wave[:n_baseline])
+        wave = wave - baseline
+        v2d_subtract_baseline.append( polarity * wave )
+    df_data["waveform_sub_base"] = pd.Series( v2d_subtract_baseline )
+    return v2d_subtract_baseline
+
+def ExtendPeak(wave, num_index_peak, baseline):
+    """
+    Extend Peak width (Find where it starts from baseline and where drop into baseline)
+    :param wave: 1d array waveform
+    :param num_index_peak: use threshold to cut get number index of peak
+    :param baseline: when the peak comes will be viewed as back to baseline
+    :return:
+    """
+    num_index_peak_extended = num_index_peak
+    i_start = num_index_peak[0]
+    i_end = num_index_peak[-1]
+    
+    # Find when the peak start from baseline
+    for i in range(1,i_start):
+        num_index_peak_extended.append(i_start - i)
+        if wave[i_start-i]<=baseline:
+            break
+
+    # Find when the peak back to the baseline
+    for i in range(1,len(wave)-i_end):
+        num_index_peak_extended.append(i_end + i)
+        if wave[i_end+i]<=baseline:
+            break
+    return sorted(num_index_peak_extended)
+
+def WaveformRec(wave, n_baseline=100, threshold_times_std=4, width_threshold=3,
+                plot_check=False):
+    """
+    Waveform reconstruction for one waveform
+    :param wave:
+    :param n_baseline:
+    :param threshold_times_std:
+    :param width_threshold:
+    :param plot_check:
+    :return:
+    """
+    dir_TQ_pairs = {"T":[], "Q":[], "width":[], "amplitude":[]}
+
+    wave = np.array( wave )
+    std_baseline = np.std(wave[:n_baseline])
+    threshold = std_baseline*threshold_times_std
+
+    num_of_lastPeak_tail = -1
+
+    if plot_check:
+        plt.plot(wave)
+
+    # Find continuous over threshold
+    num_index = np.where(wave>threshold)[0]
+    for group in mit.consecutive_groups( num_index ):
+        # One peak in waveform
+        num_index_peak = list(group)
+
+        num_index_peak_extended = ExtendPeak(wave, num_index_peak, std_baseline)
+
+        # Exclude Sharp Peak (too narrow peak)
+        if ( len(num_index_peak_extended) <= width_threshold) or \
+            (num_index_peak[0]<num_of_lastPeak_tail):
+            # num_of_lastPeak_tail record the index of last peak,
+            # if last peak have included this peak,
+            # this peak will be continued
+            continue
+
+        num_of_lastPeak_tail = num_index_peak_extended[-1]
+
+        # Save information
+        dir_TQ_pairs["Q"].append( np.sum(wave[num_index_peak_extended]) )
+        dir_TQ_pairs["T"].append( num_index_peak_extended[0] )
+        dir_TQ_pairs["width"].append( len(num_index_peak_extended) )
+        dir_TQ_pairs["amplitude"].append(  np.max(wave[num_index_peak_extended]) )
+
+        if plot_check:
+            plt.plot(num_index_peak_extended, wave[num_index_peak_extended])
+    return copy( dir_TQ_pairs )
+
+
+
+        
+
+
+
+
+
+
