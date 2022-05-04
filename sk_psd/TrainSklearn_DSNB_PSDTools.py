@@ -27,7 +27,7 @@ class TrainTool:
         self.target_train = []
         self.map_tag_particles = {"Atm":0, "DSNB":1}
         self.key_tag = "tag"
-        self.ratio_split_for_train = 0.9
+        self.ratio_split_for_train = 0.5
 
         ## Get Bins Setting
         self.bins = np.loadtxt("/afs/ihep.ac.cn/users/l/luoxj/PSD_LoweE/alpha/Bins_Setting.txt",delimiter=",", dtype=float)

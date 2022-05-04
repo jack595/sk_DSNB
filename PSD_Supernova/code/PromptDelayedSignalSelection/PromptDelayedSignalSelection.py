@@ -13,6 +13,7 @@ sys.path.append("/afs/ihep.ac.cn/users/l/luoxj/root_tool/python_script/")
 import pandas as pd
 from IPython.display import display
 import tqdm
+from collections import Counter
 
 
 def GetMinAndMax(df, key):
@@ -62,11 +63,13 @@ class PromptDelaySelection:
         self.dR_cut = GetMinAndMax(df_parameters, "distance") # mm
         self.t_cut =  GetMinAndMax(df_parameters, "deltaT") # ns
         self.Ed_cut = GetMinAndMax(df_parameters, "denergy") # MeV
-        self.Ed_cut2 = (5.2, 5.8) # MeV
+        self.Ed_cut2 = (4.79361066,5.34671959) # MeV
         self.Ep_cut = GetMinAndMax(df_parameters, "penergy") # MeV
         self.R_FV_cut = GetMinAndMax(df_parameters, "VertexR")  # mm
 
-    def DoSelection(self):
+    def DoSelection(self, multiplicity_cut=False):
+        if multiplicity_cut:
+            print("######################### With Multiplicity Cut ########################")
 
         v_IBDp_tag = np.ones(len(self.df_map_with_filter))*-1
         v_IBDd_tag = np.zeros(len(self.df_map_with_filter))
@@ -85,8 +88,11 @@ class PromptDelaySelection:
 
             index_time = (self.df_map_with_filter["TriggerTime"]-row["TriggerTime"]>self.t_cut[0]) & (self.df_map_with_filter["TriggerTime"]-row["TriggerTime"]<self.t_cut[1])
 
-            index_E_delay = ( (self.df_map_with_filter["recE"]<self.Ed_cut[1]) & (self.df_map_with_filter["recE"]>self.Ed_cut[0]) ) | \
-                            ( (self.df_map_with_filter["recE"]<self.Ed_cut2[1]) & (self.df_map_with_filter["recE"]>self.Ed_cut2[0]) )
+            if self.name_tag == "IBDSelection":
+                index_E_delay = ( (self.df_map_with_filter["recE"]<self.Ed_cut[1]) & (self.df_map_with_filter["recE"]>self.Ed_cut[0]) ) | \
+                                ( (self.df_map_with_filter["recE"]<self.Ed_cut2[1]) & (self.df_map_with_filter["recE"]>self.Ed_cut2[0]) )
+            else:
+                index_E_delay = ( (self.df_map_with_filter["recE"]<self.Ed_cut[1]) & (self.df_map_with_filter["recE"]>self.Ed_cut[0]) )
 
             dR = np.sqrt( (self.df_map_with_filter["recX"]-row["recX"])**2 + (self.df_map_with_filter["recY"]-row["recY"])**2 + (self.df_map_with_filter["recZ"]-row["recZ"])**2 )
             index_dR =  (dR < self.dR_cut[1]) & (dR>self.dR_cut[0])
@@ -94,13 +100,22 @@ class PromptDelaySelection:
 
             index_delay_signal = (index_time & index_E_delay & index_dR & index_residual_delay_evt)
 
-            if any(index_delay_signal):
-                v_IBDp_tag[index] = 1
-                v_IBDd_tag[np.where(index_delay_signal)[0][0]] = 1
-                v_IBDd_source[np.where(index_delay_signal)[0][0]] = self.df_map_with_filter["evtID"][index]
+            if multiplicity_cut:
+                if Counter(index_delay_signal==True)[True]==1:
+                    v_IBDp_tag[index] = 1
+                    v_IBDd_tag[np.where(index_delay_signal)[0][0]] = 1
+                    v_IBDd_source[np.where(index_delay_signal)[0][0]] = self.df_map_with_filter["evtID"][index]
 
+                else:
+                    v_IBDp_tag[index] = 0
             else:
-                v_IBDp_tag[index] = 0
+                if any(index_delay_signal):
+                    v_IBDp_tag[index] = 1
+                    v_IBDd_tag[np.where(index_delay_signal)[0][0]] = 1
+                    v_IBDd_source[np.where(index_delay_signal)[0][0]] = self.df_map_with_filter["evtID"][index]
+
+                else:
+                    v_IBDp_tag[index] = 0
 
 
             # if index>2000:
@@ -151,6 +166,7 @@ class PromptDelaySelection:
     def SetDataset(self, df_evts:pd.DataFrame, index_filter:np.ndarray):
         self.df_map = df_evts
         self.df_map_with_filter = self.df_map[index_filter].sort_values(by=['TriggerTime']).reset_index()
+        print("========> Input of Selection")
         display(self.df_map_with_filter.groupby("evtType").size())
         # self.df_map_with_filter = self.df_map_with_filter.loc[:, ~self.df_map_with_filter.columns.duplicated()]
 
@@ -194,16 +210,53 @@ class PromptDelaySelection:
         v_R = GetVertexR(self.df_map_with_new_tag)
         index_FV_cut = (self.R_FV_cut[0]<v_R) & (v_R<self.R_FV_cut[1])
 
-        display( self.df_map_with_new_tag.groupby([self.name_tag_isolation,"evtType"]).size() )
-
+        print("-----> Within Fiducial Volume")
         display( self.df_map_with_new_tag[index_FV_cut].groupby([self.name_tag_isolation,"evtType"]).size() )
 
 
 
 if __name__ == '__main__':
+    note_selection_scheme = \
+    """
+    =========================>  Selection Scheme <===================================
+    1.(--IBDSelectionAfterPSD == True) and (--IsolationBeforeIBD == False):
+                      Electron -> IBDSelection -> CCSelection -> IsolationSelection -> eES and CC
+                    /                      \             \ 
+                PSD                      IBD Pairs         N12 and B12   
+                    \   
+                      Proton -> pES
+    
+    2. (--IBDSelectionAfterPSD == False) and (--IsolationBeforeIBD == False):
+                                      Electron  -> CCSelection -> IsolationSelection -> eES and CC
+                                    /                       \ 
+                IBDSelection ->  PSD                          N12 and B12                   
+                       \            \   
+                     IBD Pairs       Proton -> pES
+                     
+    3. (--IBDSelectionAfterPSD == True) and (--IsolationBeforeIBD == True):
+                      Electron -> IsolationSelection -> IBDSelection -> CCSelection 
+                    /                     \                       \             \ 
+                PSD                   Singles: eES and CC        IBD Pairs       N12 and B12   
+                    \   
+                      Proton -> pES
+                      
+    4. (--IBDSelectionAfterPSD == False) and (--IsolationBeforeIBD == True):
+                                                     Electron: eES and CC  
+                                                   /                        
+                                    Singles -> PSD                                         
+                                   /               \   
+                IsolationSelection                   Proton: pES          
+                                   \                     / 
+                                    \                   /                      
+                                     IBDSelection ->PSD                         
+                                           \            \                       
+                                          IBD Pairs       Electron -> CCSelection         
+                                                                            \ 
+                                                                              N12 and B12
+    """
     # Set Variables
     import argparse
-    parser = argparse.ArgumentParser(description='ExtractFeatures to Separate AfterPulse')
+    parser = argparse.ArgumentParser(description=note_selection_scheme)
     parser.add_argument("--path-PSDTools", type=str,
                         default="/afs/ihep.ac.cn/users/l/luoxj/PSD_Supernova/myJUNOCommon/share/PSD/root/user_PSD_0_SN.root",
                         help="path of input about PSDTools")
@@ -217,7 +270,8 @@ if __name__ == '__main__':
     parser.add_argument("--path-xml", type=str,
                         default="/afs/ihep.ac.cn/users/j/junotemp006/junotemp006/myproject/SNSpecUnfold/channelClass/SNPSD/myJob/configFiles/IBD_select/scan_0_0.xml",
                         help="XML file to set selection criteria")
-    parser.add_argument("--AfterPSD", action="store_true", default=False, help="Prompt-Delayed Selection After PSD")
+    parser.add_argument("--IBDSelectionAfterPSD", action="store_true", default=False, help="Prompt-Delayed Selection After PSD")
+    parser.add_argument("--MultiplicityCut", action="store_true", default=False, help="Add Multiplicity Cut for Prompt-Delayed Selection")
 
     # For CC Selection
     parser.add_argument("--CCSelection", action="store_true", default=False, help="Do CC Selection After IBD Selection")
@@ -231,6 +285,8 @@ if __name__ == '__main__':
     parser.add_argument("--path-CC", type=str,
                         default=None,
                         help="path of input about CC Selection result")
+    parser.add_argument("--IsolationBeforeIBD", action="store_true", default=False,
+                        help="Do Isolation selection before IBD Selection")
 
     arg = parser.parse_args()
 
@@ -255,24 +311,29 @@ if __name__ == '__main__':
         if arg.CCSelection:
             print("========================> Running CC Selection <======================")
         elif arg.IsolationSelection:
-            print("========================> Running Isolation Selection <======================")
+            print(f"========================> Running Isolation Selection "
+                  f"({'BeforeIBDSelection' if arg.IsolationBeforeIBD else 'AfterIBDSelection'}) <======================")
+
             # Load CC Selection Result
             if arg.path_CC == None:
                 print(
                     "!!!!!ERROR:\n \tCC Selection needs inputting CC Selection results, use switch --path-CC to input the root file!")
                 exit(0)
-            index_to_select = LoadPreviousPromptDelaySelectionResult(df_map, arg.path_CC,
-                                                    index_to_select, "CC")
+
+            if not arg.IsolationBeforeIBD:
+                index_to_select = LoadPreviousPromptDelaySelectionResult(df_map, arg.path_CC,
+                                                        index_to_select, "CC")
 
         # Load IBD Selection Results
         if arg.path_IBD==None:
             print("!!!!!ERROR:\n \tSelection needs inputting IBD Selection result, use switch --path-IBD to input the root file!")
             exit(0)
-        index_to_select = LoadPreviousPromptDelaySelectionResult(df_map, arg.path_IBD,
-                                                    index_to_select, "IBD")
+        if (not arg.IsolationBeforeIBD) or arg.CCSelection:
+            index_to_select = LoadPreviousPromptDelaySelectionResult(df_map, arg.path_IBD,
+                                                        index_to_select, "IBD")
 
     # Filter pES events with PSD Tag
-    if arg.AfterPSD or arg.CCSelection or arg.IsolationSelection:
+    if arg.IBDSelectionAfterPSD or arg.CCSelection or (arg.IsolationSelection and (not arg.IsolationBeforeIBD) ):
         print("=============>  Do Selection After PSD  <=================")
         dir_PSD = LoadOneFileUproot(arg.path_PSDTools,
                                    name_branch="PSD", return_list=False)
@@ -289,7 +350,7 @@ if __name__ == '__main__':
         name_Selection = 'CC'
         name_truth_prompt = ["N12", "B12"]
         name_truth_delay = ["N12", "B12"]
-    elif arg.IBDSelection:
+    else:
         name_Selection = "IBD"
         name_truth_prompt = "IBDp"
         name_truth_delay = "IBDd"
@@ -301,7 +362,7 @@ if __name__ == '__main__':
         tool_selection.IsolationSelection()
         tool_selection.SaveTaggResultsSingles(arg.outfile)
     else:
-        tool_selection.DoSelection()
+        tool_selection.DoSelection(arg.MultiplicityCut)
         tool_selection.SaveTaggResults(arg.outfile)
 
     if arg.IsolationSelection:

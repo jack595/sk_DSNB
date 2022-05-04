@@ -13,7 +13,7 @@ import sys
 sys.path.append("/afs/ihep.ac.cn/users/l/luoxj/root_tool/python_script/")
 import more_itertools as mit
 from copy import copy
-
+from matplotlib.colors import LogNorm
 
 from wavedumpReader import DataFile
 def WaveDumpReader(path_file:str, nEvts:int=-1, return_Dataframe=True):
@@ -53,7 +53,51 @@ def WaveDumpReader(path_file:str, nEvts:int=-1, return_Dataframe=True):
     else:
         return dir_data
 
-def Workflow_WaveformRec(df_data:pd.DataFrame, n_baseline=100, plot_check=False, negative=True):
+###################### Event Display ######################################
+def PlotWaveformHist2d( v2d_waveform:np.ndarray, bins=None, show_h2d=True,
+                        logz=True, ax=None, fig=None):
+    v2d_waveform_aligned = []
+    v2d_time = []
+    if ax is None:
+        fig, ax = plt.subplots(1)
+    if (not ax is None) and (fig is None):
+        print("PlotWaveformHist2d suppose ax and fig are input simultaneously")
+        exit(0)
+
+    for wave in v2d_waveform:
+        # Align Peak of Waveform
+        x_peak = np.argmax( wave )
+        wave = wave[x_peak-200:]
+
+        v2d_waveform_aligned.append( wave )
+        v2d_time.append( np.arange(len(wave)) )
+    if bins==None:
+        bins = (np.arange(180.5,250.5), 100)
+
+    if show_h2d:
+        h = ax.hist2d( np.concatenate(v2d_time), np.concatenate(v2d_waveform_aligned),
+                    bins=bins, norm=( LogNorm() if logz else None),
+                    cmap="Blues")
+        fig.colorbar(h[3], ax=ax)
+    else:
+        # Display waveforms in lines
+        for wave in v2d_waveform_aligned[:100]:
+            ax.plot(wave)
+
+    ax.set_xlabel("Time [ ns ]")
+    ax.set_ylabel("ADC")
+
+
+
+
+###########################################################################
+
+
+
+#####################  Waveform Reconstruction ############################
+
+def Workflow_WaveformRec(df_data:pd.DataFrame, n_baseline=100, plot_check=False, negative=True,
+                         threshold_times_std=4, width_threshold=3):
     """
     Waveform Reconstruction for data from WaveDumpReader
     :param df_data: data returned from WaveDumpReader
@@ -63,7 +107,9 @@ def Workflow_WaveformRec(df_data:pd.DataFrame, n_baseline=100, plot_check=False,
     SubtractBaseline(df_data, n_baseline=n_baseline, negative=negative)
     dir_TQ_pairs = {}
     for wave in df_data["waveform_sub_base"]:
-        dir_TQ_pairs_aWaveform = WaveformRec(wave, n_baseline=n_baseline,plot_check=plot_check)
+        dir_TQ_pairs_aWaveform = WaveformRec(wave, n_baseline=n_baseline,plot_check=plot_check,
+                                             threshold_times_std=threshold_times_std,
+                                             width_threshold=width_threshold)
 
         # if dir_TQ_pairs is empty, initialize it keys with return dict by WaveformRec()
         if not dir_TQ_pairs:
@@ -78,9 +124,21 @@ def Workflow_WaveformRec(df_data:pd.DataFrame, n_baseline=100, plot_check=False,
     # Update TQ in df_data
     df_TQ = pd.DataFrame.from_dict( dir_TQ_pairs )
     df_data = df_data.join(df_TQ)
-    print(df_data.columns)
     index_withTQ = df_data.apply( lambda row: ( False if len(row["T"])==0 else True),axis=1 )
-    return df_data[index_withTQ]
+    return df_data[index_withTQ].reset_index()
+
+def GetTQArrays(df_data_signal:pd.DataFrame):
+    dir_TQ_array = {}
+    for key in ["T", "Q", "width", "amplitude"]:
+        dir_TQ_array[key] = np.concatenate( np.array( df_data_signal[key] ) )
+
+    dir_TQ_array["width_max"] = []
+    for v_width in np.array( df_data_signal["width"] ) :
+        dir_TQ_array["width_max"].append( np.max(v_width) )
+    dir_TQ_array["width_max"] = np.array(dir_TQ_array["width_max"])
+
+    return copy(dir_TQ_array)
+
 
 
 def SubtractBaseline(df_data, n_baseline=100, negative=True):
@@ -167,6 +225,8 @@ def WaveformRec(wave, n_baseline=100, threshold_times_std=4, width_threshold=3,
         if plot_check:
             plt.plot(num_index_peak_extended, wave[num_index_peak_extended])
     return copy( dir_TQ_pairs )
+
+###################################################################################################
 
 
 
