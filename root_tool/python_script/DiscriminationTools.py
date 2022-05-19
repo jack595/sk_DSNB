@@ -43,6 +43,8 @@ class DiscriminationTools:
         self.key_tag = "evtType"
         self.key_PSD = "PSD"
 
+        plt.figure("PSDCut2BkgIneff")
+
     def GetPredictionData(self, path_prediction_file:str):
         with np.load( path_prediction_file, allow_pickle=True) as f:
             self.dir_events = f["dir_events"].item()
@@ -93,18 +95,19 @@ class DiscriminationTools:
             plt.ylabel("N of Events")
             plt.title("PSD Distribution"+title_options)
 
-        plt.figure()
         for i, key in enumerate([0,1]):
             # self.dir_hist_PSD[key] = ax.hist( (dir_events["PSD"][dir_events[self.key_tag]==key]) ,bins=bins,
             #          histtype="step", label=v_tags[i],*args, **kwargs)
             self.dir_hist_PSD[key] = PlotHistNormByHits(  (dir_events["PSD"][dir_events[self.key_tag]==key]) ,bins=bins,
-                                                          ax=ax, label=v_tags[i],*args, **kwargs)
+                                                          ax=ax,
+                                                          label=v_tags[i]+( f"({title_options})"  if title_options!="" else "") ,
+                                                          *args, **kwargs)
         ax.set_xlim(0,1)
         ax.semilogy()
         ax.legend()
-        ax.set_xlabel("PSD Output")
-        ax.set_ylabel("N of Events")
-        ax.set_title("PSD Distribution"+title_options)
+        ax.set_xlabel("NN Output")
+        ax.set_ylabel("Normalized Count")
+        # ax.set_title("PSD Distribution"+title_options)
 
     def PlotROCCurves(self,xlim=None,ylim=None, ax=None, *args, **kargs):
         if ax is None:
@@ -127,6 +130,11 @@ class DiscriminationTools:
         # Map background inefficiency to PSD cut
         self.f_BkgIneff2PSDCut = interp1d(eff_bkg, self.bins_center)
         self.f_PSDCut2BkgIneff = interp1d(self.bins_center, eff_bkg)
+        # plt.figure("PSDCut2BkgIneff")
+        # plt.plot(self.bins_center,self.f_PSDCut2BkgIneff(self.bins_center), label=label)
+        # plt.legend()
+        # plt.xlim(0, 0.6)
+        # plt.ylim(0,0.05)
 
         ax.plot(eff_bkg,eff_sig, *args, **kargs)
         ax.set_xlabel(f'{self.key_0} Inefficiency')
@@ -169,8 +177,8 @@ class DiscriminationTools:
             else:
                 label = f"{bins_Energy[i_bin]:.2f} < "+ "$E_{rec}$"+ f" < {bins_Energy[i_bin+1]:.2f} MeV"
                 color = None
+            fig_PSD, ax_PSD = plt.subplots(1, 1)
 
-            fig_PSD,ax_PSD = plt.subplots(1,1)
             dir_events_in_quench_bins = {}
             index_energy = ( self.dir_events[self.key_Energy]<bins_Energy[i_bin+1] ) & ( self.dir_events[self.key_Energy]>bins_Energy[i_bin] )
             for key in self.dir_events.keys():
@@ -264,7 +272,7 @@ class DiscriminationTools:
 
     def CalculateEfficiency(self, PSD_cut, bkg_ineff, sig_eff, n_total_sig, n_total_bkg,option="",ax=None,condition:str=""):
 
-        print(f"PSD Cut: {PSD_cut:.3g}")
+        # print(f"PSD Cut: {PSD_cut:.3g}")
 
         # Calculate Signal Efficiency and Background Inefficiency
         err_bkg_optimized = np.sqrt( bkg_ineff*(1-bkg_ineff)*n_total_bkg )/n_total_bkg *100
@@ -273,8 +281,8 @@ class DiscriminationTools:
         sig_optimized = f"{sig_eff*100:.3f}  +- {err_sig_optimized:.2g} %"
 
 
-        print(f"{option} Efficiency:\n",f"{self.key_0} inefficiency:\t",bkg_optimized,
-                  "\n"+f"{self.key_1} efficiency:\t", sig_optimized)
+        # print(f"{option} Efficiency:\n",f"{self.key_0} inefficiency:\t",bkg_optimized,
+        #           "\n"+f"{self.key_1} efficiency:\t", sig_optimized)
 
         # Calculate Residual Ratio
         n_total_residue = n_total_sig*sig_eff + n_total_bkg*bkg_ineff
@@ -285,9 +293,9 @@ class DiscriminationTools:
         str_ratio_bkg2residue = f"{ratio_bkg2residue*100:.3f} +- {np.sqrt(ratio_bkg2residue*(1-ratio_bkg2residue)*n_total_residue)/n_total_residue*100:.2g} %"
 
 
-        print(f"\n{option} Ratio of Residue:\n", f"{self.key_0} Ratio:\t", str_ratio_bkg2residue,
-                f"\n{self.key_1} Ratio:\t", str_ratio_sig2residue )
-        print("\n##############################################\n")
+        # print(f"\n{option} Ratio of Residue:\n", f"{self.key_0} Ratio:\t", str_ratio_bkg2residue,
+        #         f"\n{self.key_1} Ratio:\t", str_ratio_sig2residue )
+        # print("\n##############################################\n")
 
         if ax is None:
             ax = self.ax_ROC

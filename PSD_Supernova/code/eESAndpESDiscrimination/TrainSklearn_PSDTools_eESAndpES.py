@@ -29,7 +29,7 @@ class TrainTool:
         self.dir_PSD_diff_particle = {}
         self.input_train = []
         self.target_train = []
-        self.map_tag_particles = {"pES":0, "eES":1, "IBDp":1}
+        self.map_tag_particles = {"pES":0, "eES":1}
         self.dir_ratio_used = {"IBDp":0.01}
         # self.map_tag_particles = {"pES":0, "IBDp":1}
         self.key_tag = "evtType"
@@ -45,7 +45,8 @@ class TrainTool:
         self.bins_width = np.diff(self.bins)
 
         ## Set Filter For Events
-        self.filter = {"Erec": [0, np.inf], "R3": [0, 6000]}
+        # self.filter = {"Erec": [0, np.inf], "R3": [0, 6000]}
+        self.filter = {"Erec": [0, 15], "R3": [0, 6000]}
 
         # Training Settings
         self.normalized_input=False
@@ -75,7 +76,7 @@ class TrainTool:
                                     name_branch="evt", use_multiprocess=False)
 
         # Cut Unused Events
-        for key_particle, ratio in self.dir_ratio_used:
+        for key_particle, ratio in self.dir_ratio_used.items():
             for key,item in self.dir_PSD_diff_particle[key_particle].items():
                 self.dir_PSD_diff_particle[key_particle][key] = item[:int(ratio*len(item))]
                 print(len(self.dir_PSD_diff_particle[key_particle][key]))

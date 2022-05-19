@@ -125,17 +125,22 @@ def Workflow_WaveformRec(df_data:pd.DataFrame, n_baseline=100, plot_check=False,
     df_TQ = pd.DataFrame.from_dict( dir_TQ_pairs )
     df_data = df_data.join(df_TQ)
     index_withTQ = df_data.apply( lambda row: ( False if len(row["T"])==0 else True),axis=1 )
-    return df_data[index_withTQ].reset_index()
+
+    df_data_return = df_data[index_withTQ].reset_index()
+
+    # Add Charge_max and Width_max which is more convenient to index waveforms
+    df_data_return["charge_max"] = df_data_return.apply( lambda row: max(row["Q"]),axis=1 )
+    df_data_return["width_max"] =  df_data_return.apply( lambda row: max(row["width"]),axis=1 )
+    df_data_return["amplitude_max"] = df_data_return.apply( lambda row: max(row["amplitude"]),axis=1 )
+    df_data_return["valley_min"] = df_data_return.apply( lambda row: min(row["valley"]),axis=1 )
+
+
+    return df_data_return
 
 def GetTQArrays(df_data_signal:pd.DataFrame):
     dir_TQ_array = {}
-    for key in ["T", "Q", "width", "amplitude"]:
+    for key in ["T", "Q", "width", "amplitude", "valley"]:
         dir_TQ_array[key] = np.concatenate( np.array( df_data_signal[key] ) )
-
-    dir_TQ_array["width_max"] = []
-    for v_width in np.array( df_data_signal["width"] ) :
-        dir_TQ_array["width_max"].append( np.max(v_width) )
-    dir_TQ_array["width_max"] = np.array(dir_TQ_array["width_max"])
 
     return copy(dir_TQ_array)
 
@@ -164,16 +169,31 @@ def ExtendPeak(wave, num_index_peak, baseline):
     i_end = num_index_peak[-1]
     
     # Find when the peak start from baseline
-    for i in range(1,i_start):
-        num_index_peak_extended.append(i_start - i)
-        if wave[i_start-i]<=baseline:
-            break
+    if i_start >=2:
+        for i in range(1,i_start):
+            num_index_peak_extended.append(i_start - i)
+            if i_start-i-1>=0:
+                if np.abs(wave[i_start-i])<=baseline and np.abs(wave[i_start-i-1])<=baseline:
+                    break
+            elif (i_start-i)>=0:
+                if np.abs(wave[i_start-i])<=baseline:
+                    break
+            else:
+                break
 
     # Find when the peak back to the baseline
-    for i in range(1,len(wave)-i_end):
-        num_index_peak_extended.append(i_end + i)
-        if wave[i_end+i]<=baseline:
-            break
+    if len(wave)-i_end>=2:
+        for i in range(1,len(wave)-i_end):
+            num_index_peak_extended.append(i_end + i)
+            if i_end+i+1<len(wave):
+                if np.abs(wave[i_end+i])<=baseline and np.abs(wave[i_end+i+1])<=baseline:
+                    break
+            elif i_end+i<len(wave):
+                if np.abs(wave[i_end + i]) <= baseline:
+                    break
+            else:
+                break
+
     return sorted(num_index_peak_extended)
 
 def WaveformRec(wave, n_baseline=100, threshold_times_std=4, width_threshold=3,
@@ -187,7 +207,7 @@ def WaveformRec(wave, n_baseline=100, threshold_times_std=4, width_threshold=3,
     :param plot_check:
     :return:
     """
-    dir_TQ_pairs = {"T":[], "Q":[], "width":[], "amplitude":[]}
+    dir_TQ_pairs = {"T":[], "Q":[], "width":[], "amplitude":[], "valley":[]}
 
     wave = np.array( wave )
     std_baseline = np.std(wave[:n_baseline])
@@ -221,6 +241,7 @@ def WaveformRec(wave, n_baseline=100, threshold_times_std=4, width_threshold=3,
         dir_TQ_pairs["T"].append( num_index_peak_extended[0] )
         dir_TQ_pairs["width"].append( len(num_index_peak_extended) )
         dir_TQ_pairs["amplitude"].append(  np.max(wave[num_index_peak_extended]) )
+        dir_TQ_pairs["valley"].append( np.min(wave[num_index_peak_extended]))
 
         if plot_check:
             plt.plot(num_index_peak_extended, wave[num_index_peak_extended])

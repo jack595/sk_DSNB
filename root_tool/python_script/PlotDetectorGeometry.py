@@ -17,6 +17,9 @@ def GetR3(XYZ):
     XYZ = np.array(XYZ)
     return np.sum((XYZ/1e3)**2)**(3/2)
 
+def GetR_XYZ(X, Y, Z):
+    return ( X**2+Y**2+Z**2 )**0.5
+
 def GetR3_XYZ(X, Y, Z):
     return ( X**2+Y**2+Z**2 )**1.5
 

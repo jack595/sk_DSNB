@@ -21,7 +21,11 @@ def ReBin(h_center, h_values, n_bins_to_merge:int=2):
         print("len(h_center) != len(h_values)!!!!!! Check if there is a cut!!!")
         exit()
     h_center_rebin = GetBinCenter(h_center)[::n_bins_to_merge]
-    h_values_rebin = h_values[::n_bins_to_merge]+h_values[1::n_bins_to_merge]
+    for i in range(n_bins_to_merge):
+        if i == 0:
+            h_values_rebin = h_values[i::n_bins_to_merge]
+        else:
+            h_values_rebin += h_values[i::n_bins_to_merge]
     return h_center_rebin, h_values_rebin
 
 

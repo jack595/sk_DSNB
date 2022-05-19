@@ -66,13 +66,19 @@ class TrainTool:
 
         # Load Files
         self.dir_PSD_diff_particle = LoadFileListUprootOptimized(file_list,list_corresponding_keys=list_corresponding_keys,
-                                    name_branch="TMVAinput", use_multiprocess=False)
+                                    name_branch="TMVAinput", use_multiprocess=True)
 
         # Append Tags and R3 for the dataset
         for key,dir_PSD in self.dir_PSD_diff_particle.items():
             v_keys = list(dir_PSD.keys())
             self.dir_PSD_diff_particle[key][self.key_tag] = np.array([self.map_tag_particles[key]]*len(dir_PSD[v_keys[0]]))
             # self.dir_PSD_diff_particle[key]["r3"] = np.sum( (dir_PSD["XYZ"]/1000)**2,axis=1)**(3/2)
+
+        # Append additional key in DSNB dataset
+        if "Atm" in list(self.dir_PSD_diff_particle.keys()) and "isoz" in list(self.dir_PSD_diff_particle["Atm"].keys()):
+            self.dir_PSD_diff_particle["DSNB"]["isoz"] = np.zeros(len(self.dir_PSD_diff_particle["DSNB"][self.key_tag]))
+            self.dir_PSD_diff_particle["DSNB"]["ison"] = np.zeros(len(self.dir_PSD_diff_particle["DSNB"][self.key_tag]))
+            self.dir_PSD_diff_particle["DSNB"]["id_tag"] = np.zeros(len(self.dir_PSD_diff_particle["DSNB"][self.key_tag]))
 
         print(self.dir_PSD_diff_particle.keys())
 
@@ -274,7 +280,7 @@ if __name__ == '__main__':
 
     train_tool = TrainTool()
 
-    v_wildcard = ["*", "*[0-4]"]
+    v_wildcard = ["4*", "*[0-4]"]
     dir_path = {}
     for i in range(2):
         key = list(train_tool.map_tag_particles.keys())[i]

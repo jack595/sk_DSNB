@@ -197,7 +197,8 @@ def LoadOneFileUprootCertainEntries(name_file:str, name_branch:str,n_entries_loa
     return dir_event
 
 
-def LoadMultiROOTFiles(name_files:str="*.root",  name_branch:str="evt", list_branch_filter:list=None, n_files_to_load=-1):
+def LoadMultiROOTFiles(name_files:str="*.root",  name_branch:str="evt", list_branch_filter:list=None, n_files_to_load=-1,
+                       use_multiprocess=True):
     """
     this function is to load root files with uproot, because uproot.lazy cannot close files correctly,
     so here we use uproot.open() to enable us can load a large amount of files
@@ -218,8 +219,16 @@ def LoadMultiROOTFiles(name_files:str="*.root",  name_branch:str="evt", list_bra
         files_list = files_list[1:n_files_to_load]
     else:
         files_list = files_list[1:]
-    with concurrent.futures.ProcessPoolExecutor() as executor:
-        evts_load = executor.map(LoadOneFileUproot, files_list, [name_branch]*len(files_list), [list_branch_filter]*len(files_list))
+
+    if use_multiprocess:
+        with concurrent.futures.ProcessPoolExecutor() as executor:
+            evts_load = executor.map(LoadOneFileUproot, files_list, [name_branch]*len(files_list), [list_branch_filter]*len(files_list))
+
+    else:
+        evts_load = []
+        for name_file in files_list:
+            evts_load.append(LoadOneFileUproot(name_file, name_branch=name_branch, list_branch_filter=list_branch_filter,
+                                               return_list=False))
     for evt_load in evts_load:
         for key in evt_load.keys():
             dir_events[key].extend(evt_load[key])
@@ -289,7 +298,8 @@ def LoadFileListUprootOptimized(list_files,list_corresponding_keys, name_branch,
     print("Multi-Files List:\t", list_files[v_is_multi_files])
     print("--------> Loading Multi-files <------------")
     for key_in_dict,name_file_multi_files in tqdm.tqdm(zip(list_corresponding_keys[v_is_multi_files],list_files[v_is_multi_files])):
-        dir_return_diff_file[key_in_dict] = LoadMultiROOTFiles(name_file_multi_files, name_branch=name_branch, list_branch_filter=list_branch_filter)
+        dir_return_diff_file[key_in_dict] = LoadMultiROOTFiles(name_file_multi_files, name_branch=name_branch, list_branch_filter=list_branch_filter,
+                                                               use_multiprocess=False)
 
     return {key:dir_return_diff_file[key] for key in list_corresponding_keys}
     # if return_shuffle_index:
