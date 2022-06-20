@@ -23,3 +23,11 @@ def JointPlot(data, x:str, y:str, hue:str, xlabel="", ylabel=""):
     g.plot_marginals(sns.histplot, element="step", fill=False)
     g.plot_joint(sns.scatterplot,s=3 )
     return g
+
+def SetLegend(ax, loc=None, title=None,**kws ):
+    old_legend = ax.legend_
+    handles = old_legend.legendHandles
+    labels = [t.get_text() for t in old_legend.get_texts()]
+    if title == None:
+        title = old_legend.get_title().get_text()
+    ax.legend(handles, labels, loc=loc, title=title, **kws)

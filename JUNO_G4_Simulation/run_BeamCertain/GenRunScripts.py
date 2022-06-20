@@ -56,6 +56,7 @@ if __name__ == "__main__":
         root_file = template_outfile_root.format(dir_ion["name"][i])
         job_file = template_outfile_job.format(dir_ion["name"][i])
         Z = float(dir_ion["input_list"][i].split(" ")[1])
+        print(Z, Z*dir_ion["BeamE[MeV/u]"][i])
         gen_scripts.GenMacFileCertainE(mac_file, dir_ion["input_list"][i], Ecertain=Z*dir_ion["BeamE[MeV/u]"][i],nEvts=10000)
         gen_scripts.GenScripts(input_mac_file=mac_file, out_root_file=root_file, name_scripts=job_file, L_LS=5)
         os.system("chmod 755 "+job_file)

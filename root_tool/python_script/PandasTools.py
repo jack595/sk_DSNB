@@ -50,6 +50,12 @@ def DataFrameToDict(df:pd.DataFrame):
         dir_return[column] = np.array( df[column] )
     return dir_return
 
+def DictToDataFrame(dict:dict, keys_dfLabel, values_dfLabel):
+    dict_to_df = {keys_dfLabel:[], values_dfLabel:[]}
+    for key, value in dict.items():
+        dict_to_df[keys_dfLabel] += len(value)*[key]
+        dict_to_df[values_dfLabel] += list(value)
+    return pd.DataFrame.from_dict(dict_to_df)
 
 if __name__ == '__main__':
     dir = {"A":[1,3,5,5], "B":"quartz", "C":np.array([5,6, 2,5])}

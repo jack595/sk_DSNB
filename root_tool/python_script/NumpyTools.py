@@ -36,11 +36,13 @@ def AlignRisingEdge(v_to_align:np.ndarray, threshold:float, i_loc_aligned=10):
         v_return = np.concatenate((np.zeros(i_append), v_to_align))[:len(v_to_align)]
     return v_return
 
-def Replace( array_to_replace, dir_map_to_replace:dict=None):
+def Replace( array_to_replace, dir_map_to_replace:dict=None, else_item=None):
     if dir_map_to_replace is None:
         dir_map_to_replace = {"alpha":0, "e-":1}
-    replacer = dir_map_to_replace.get
-    return np.array([replacer(item, item) for item in array_to_replace])
+    if else_item is None:
+        return np.array([dir_map_to_replace[item] if item in dir_map_to_replace.keys() else item for item in array_to_replace])
+    else:
+        return np.array([dir_map_to_replace[item] if item in dir_map_to_replace.keys() else else_item for item in array_to_replace])
 
 def AlignEvents(v_dict):
     """

@@ -10,7 +10,7 @@ plt.style.use("/afs/ihep.ac.cn/users/l/luoxj/Style/Paper.mplstyle")
 import sys
 
 sys.path.append("/afs/ihep.ac.cn/users/l/luoxj/root_tool/python_script/")
-def GetDirForNoOpticalAnalyze(dir_events, dir_geninfo, pdgID=None):
+def GetDirForNoOpticalAnalyze(dir_events, dir_geninfo, pdgID=None, evtIDMap=False):
     v_dE_dx_average = []
     v_dE_dx_only_main_track = []
     v_Equench = []
@@ -18,6 +18,9 @@ def GetDirForNoOpticalAnalyze(dir_events, dir_geninfo, pdgID=None):
     v_Einit = []
     v_dx = []
     v_index = []
+    v_evtID = []
+    v_fileNo = []
+    
     if pdgID == None:
         from collections import Counter
         v_pdg_first = []
@@ -40,10 +43,11 @@ def GetDirForNoOpticalAnalyze(dir_events, dir_geninfo, pdgID=None):
 
         if sum(dEquench)==0 or sum(dx[index_pdgID])==0:
             # print("Continue Edep=", np.sum(dEdep))
-            continue
-        dE_dx_average = sum(dEquench*dEdep/dx)/sum(dEquench)
-
-        dE_dx_only_main_track = sum(dEdep)/sum(dx[index_pdgID])
+            dE_dx_average = 0
+            dE_dx_only_main_track = 0
+        else:
+            dE_dx_average = sum(dEquench*dEdep/dx)/sum(dEquench)
+            dE_dx_only_main_track = sum(dEdep)/sum(dx[index_pdgID])
 
         v_dE_dx_average.append(dE_dx_average)
         v_dE_dx_only_main_track.append(dE_dx_only_main_track)
@@ -52,6 +56,9 @@ def GetDirForNoOpticalAnalyze(dir_events, dir_geninfo, pdgID=None):
         v_Einit.append(dir_geninfo["E_init"][dir_events["evtID"][i]])
         v_dx.append(sum(dir_events["step_dx"][i][index_pdgID]))
         v_index.append(i)
+        if evtIDMap:    
+            v_evtID.append(dir_events["evtID"][i])
+            v_fileNo.append(dir_events["LoadedFileNo"][i])
 
     dir_return = {"Einit":np.array(v_Einit),
                   "dE_dx":np.array(v_dE_dx_average),
@@ -60,6 +67,9 @@ def GetDirForNoOpticalAnalyze(dir_events, dir_geninfo, pdgID=None):
                   "Edep":np.array(v_Edep),
                   "dx":np.array(v_dx),
                   "index":np.array(v_index)}
+    if evtIDMap:
+        dir_return["evtID"] = np.array(v_evtID)
+        dir_return["fileNo"] = np.array(v_fileNo,dtype=int)
     return pdgID_certain, dir_return
 
 def GetNPE(dir_PMT:dict, chamberID=0, mean=True):

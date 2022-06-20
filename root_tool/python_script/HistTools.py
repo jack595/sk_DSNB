@@ -5,6 +5,7 @@
 # @File: HistTools.py
 import matplotlib.pylab as plt
 import numpy as np
+import pandas as pd
 
 plt.style.use("/afs/ihep.ac.cn/users/l/luoxj/Style/Paper.mplstyle")
 
@@ -65,6 +66,107 @@ def PlotHistNormByHits(x, bins=None, ax=None ,*args, **kargs):
     hist_norm = (hist[0]/len(x), hist[1])
     RedrawHistFrom_plt_hist(hist_norm, ax,  *args, **kargs)
     return hist_norm
+
+def PlotHistNormByMax(x, bins=None, ax=None, divide_binWidth=False,plot=True, return_errorbar=False ,*args, **kargs):
+    hist = np.histogram(x, bins=bins)
+    hist_error  = np.sqrt(hist[0])
+    if divide_binWidth:
+        hist_norm = ( (hist[0]/np.diff(hist[1])) / max(hist[0]/np.diff(hist[1])) , hist[1])
+        hist_error_norm = ( (hist_error/np.diff(hist[1])) / max(hist[0]/np.diff(hist[1])) , hist[1])
+    else:
+        hist_norm = (hist[0]/max(hist[0]), hist[1])
+        hist_error_norm = (hist_error/max(hist[0]), hist[1])
+    if plot:
+        RedrawHistFrom_plt_hist(hist_norm, ax,  *args, **kargs)
+    if return_errorbar:
+        return hist_norm, hist_error_norm[0]
+    else:
+        return hist_norm
+
+def DfHistPlotNormByMax(data:pd.DataFrame, x:str,hue:str,plot_ratio=True,hue_order=None,
+                        ratio_base=None, dict_cut_for_df:dict=None,key_cut:str="",*args, **kargs):
+    """
+
+    :param data:
+    :param x: key in df
+    :param hue:  key in df
+    :param plot_ratio:
+    :param hue_order:
+    :param ratio_base: one key in data[hue] which is to set ratio criteria
+
+    :param key_cut: key in data
+    :param dict_cut_for_df: for example: {key1:[True, False, ...True]} or {key1:data[data[key_cut]<cut]}, key1 is in data[hue]
+    note: key_cut and dict_cut_for_df should be input simultaneously
+
+    :param args:
+    :param kargs:
+    :return:
+    """
+    import seaborn as sns
+    def GetIndexCut(oneType):
+        # Set Cut for Dataset
+        if dict_cut_for_df is None or oneType not in dict_cut_for_df.keys():
+            index_cut = (data[hue] == oneType)
+        else:
+            index_cut = (data[hue] == oneType) & (data[key_cut]<dict_cut_for_df[oneType][1]) &\
+                        (data[key_cut] > dict_cut_for_df[oneType][0])
+        return index_cut
+
+    if (dict_cut_for_df is None and key_cut!="") or (not dict_cut_for_df is None and key_cut==""):
+        print("ERROR:\tkey_cut and dict_cut_for_df should be input simultaneously!!")
+        return 1
+
+    if "ax" in kargs.keys():
+        plot_ratio = False
+
+    if hue_order is None:
+        hue_order = set(np.array(data[hue]))
+    if plot_ratio:
+        f, (ax0, ax1) = plt.subplots(2, 1, gridspec_kw={'height_ratios': [3, 1]},
+                             sharex=True, figsize=(8,8))
+        plt.subplots_adjust(wspace=0, hspace=0)
+    v_colors = sns.color_palette("bright")[:len(hue_order)]
+
+
+    if not ratio_base is None:
+        index_cut = GetIndexCut(ratio_base)
+        df_base = data[index_cut]
+        if (not dict_cut_for_df is None) and (ratio_base in dict_cut_for_df.keys()):
+            df_base
+        h, h_error = PlotHistNormByMax(data[index_cut][x],
+                              label=ratio_base,plot=False,return_errorbar=True,
+                              *args, **kargs)
+        bin_center = GetBinCenter(h[1])
+        hist_base = h[0]
+        hist_base_error = h_error
+
+    for i,oneType in enumerate(hue_order):
+        index_cut = GetIndexCut(oneType)
+
+        color = v_colors[i]
+        if plot_ratio:
+            h, h_error = PlotHistNormByMax(data[index_cut][x], label=oneType, color=color,
+                                           return_errorbar=True, ax=ax0, linewidth=2,*args, **kargs)
+            if ((ratio_base is None) and (i==0)) or (ratio_base==oneType):
+                bin_center = GetBinCenter(h[1])
+                hist_base = h[0]
+                hist_base_error = h_error
+                ax1.set_ylabel(r"$\frac{h-h_{"+str(oneType)+"}}{h_{"+str(oneType)+"}}$")
+            else:
+                ratio_error = np.sqrt( (hist_base**2*h_error**2 + h[0]**2*hist_base_error**2)/hist_base**4 )
+                ax1.errorbar(bin_center, (h[0]-hist_base)/hist_base,xerr=np.diff(h[1])/2,yerr=ratio_error,color=color,
+                            ecolor=color, markersize=5,ls="none",
+                            capthick=1,elinewidth=1, linewidth=1)
+        else:
+            h = PlotHistNormByMax(data[index_cut][x], label=oneType, color=color, *args, **kargs)
+
+    if "ax" in kargs.keys():
+        kargs["ax"].legend(title=hue)
+    elif plot_ratio:
+        ax0.legend(title=hue)
+        return (ax0, ax1)
+    else:
+        plt.legend(title=hue)
 
 
 def GetMaxArgOfHist(v_data, bins=100):

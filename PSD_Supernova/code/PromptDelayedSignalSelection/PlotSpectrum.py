@@ -11,11 +11,12 @@ import sys
 
 sys.path.append("/afs/ihep.ac.cn/users/l/luoxj/root_tool/python_script/")
 
-def PlotSpectrumComponents(df_residue,logy=True):
+def PlotSpectrumComponents(df_residue,E_bins=np.linspace(0,100,80),
+                           logy=True):
     v2d_Erec = []
     v_labels = []
     v_nEvts = []
-    E_bins = np.linspace(0,100,80)
+
     plt.hist(df_residue["recE"],bins=E_bins,histtype="step",
              color="black", linewidth=3)
     for tag_truth in set(df_residue["evtType"]):

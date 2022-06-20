@@ -155,18 +155,25 @@ def LoadMultiFilesMultiProcess(name_files:str="predict_*.npz", key_in_file:str="
             continue
     return evts
 
-def LoadOneFileUproot(name_file:str, name_branch:str, list_branch_filter:list=None, return_list:bool=True):
+def LoadOneFileUproot(name_file:str, name_branch:str, list_branch_filter:list=None, return_list:bool=True,
+                      fileNoExtracter=None):
     dir_event = {}
     with up.open(name_file) as f:
         tree = f[name_branch]
-        for key in tree.keys():
+        for i, key in enumerate(tree.keys()):
             if (not list_branch_filter is None) and (key in list_branch_filter):
                 continue
             if return_list:
                 dir_event[key] = list(np.array(tree[key]))
             else:
                 dir_event[key] = np.array(tree[key])
+            if fileNoExtracter!=None and i == 0:
+                fileNo = fileNoExtracter.match(name_file).groups()[0]
+                dir_event["LoadedFileNo"] = [fileNo]*len(dir_event[key])
+
     return dir_event
+
+
 
 def LoadOneFileUprootCertainEntries(name_file:str, name_branch:str,n_entries_load:int=100,
                                     list_load_branch:list=None,list_branch_filter:list=None, return_list:bool=False,
@@ -198,7 +205,7 @@ def LoadOneFileUprootCertainEntries(name_file:str, name_branch:str,n_entries_loa
 
 
 def LoadMultiROOTFiles(name_files:str="*.root",  name_branch:str="evt", list_branch_filter:list=None, n_files_to_load=-1,
-                       use_multiprocess=True):
+                       use_multiprocess=True, template_file_name=None):
     """
     this function is to load root files with uproot, because uproot.lazy cannot close files correctly,
     so here we use uproot.open() to enable us can load a large amount of files
@@ -208,11 +215,24 @@ def LoadMultiROOTFiles(name_files:str="*.root",  name_branch:str="evt", list_bra
     :return:
     """
     files_list = glob.glob(name_files)
+
+    if "/" not in name_files:
+        import os
+        name_files = os.getcwd()+"/"+name_files
+
+    if template_file_name== None:
+        template_file_name = name_files.replace("*", "(.*)")
+        template_file_name = "?".join(template_file_name.split("?")).replace("?", "(.*)")
+
+    import re
+    m_extract_fileNo = re.compile(template_file_name, re.IGNORECASE)
+
     n_files = len(files_list)
     if n_files == 0:
         print(f"Cannot find related files in {files_list}!!!!!!!!")
         exit(1)
-    dir_events = LoadOneFileUproot(files_list[0], name_branch, list_branch_filter, return_list=(n_files != 1))
+    dir_events = LoadOneFileUproot(files_list[0], name_branch, list_branch_filter, return_list=(n_files != 1),
+                                   fileNoExtracter=m_extract_fileNo)
     if n_files == 1:
         return dir_events
     if n_files_to_load!=-1:
@@ -222,13 +242,18 @@ def LoadMultiROOTFiles(name_files:str="*.root",  name_branch:str="evt", list_bra
 
     if use_multiprocess:
         with concurrent.futures.ProcessPoolExecutor() as executor:
-            evts_load = executor.map(LoadOneFileUproot, files_list, [name_branch]*len(files_list), [list_branch_filter]*len(files_list))
+            evts_load = executor.map(LoadOneFileUproot, files_list, [name_branch]*len(files_list), [list_branch_filter]*len(files_list),
+                                     [False]*len(files_list), [m_extract_fileNo]*len(files_list))
 
     else:
         evts_load = []
         for name_file in files_list:
-            evts_load.append(LoadOneFileUproot(name_file, name_branch=name_branch, list_branch_filter=list_branch_filter,
-                                               return_list=False))
+            try:
+                evts_load.append(LoadOneFileUproot(name_file, name_branch=name_branch, list_branch_filter=list_branch_filter,
+                                                   return_list=False, fileNoExtracter=m_extract_fileNo))
+            except :
+                print(name_file)
+                continue
     for evt_load in evts_load:
         for key in evt_load.keys():
             dir_events[key].extend(evt_load[key])
@@ -239,6 +264,14 @@ def LoadMultiROOTFiles(name_files:str="*.root",  name_branch:str="evt", list_bra
             print(f"Something go wrong in key({key}), continue!")
             continue
     return dir_events
+
+def LoadMultiROOTFilesEOS(name_file_template:str, fileNo_start:int, fileNo_end:int, *args, **kwargs):
+    v_files = []
+    v_fileNo = []
+    for fileNo in range(fileNo_start, fileNo_end+1):
+        v_files.append(name_file_template.format(fileNo))
+        v_fileNo.append(fileNo)
+    return MergeEventsDictionary( list(LoadFileListUprootOptimized(v_files, v_fileNo,*args, **kwargs).values()) )
 
 def LoadFileListUprootOptimized(list_files,list_corresponding_keys, name_branch, list_branch_filter:list=None,v_is_one_file=None,
                                 use_multiprocess=False):
@@ -302,12 +335,114 @@ def LoadFileListUprootOptimized(list_files,list_corresponding_keys, name_branch,
                                                                use_multiprocess=False)
 
     return {key:dir_return_diff_file[key] for key in list_corresponding_keys}
-    # if return_shuffle_index:
-    #     index_orignal = np.arange(len(list_files))
-    #     index_return = np.concatenate((index_orignal[v_is_one_file],index_orignal[v_is_multi_files]))
-    #     return (dir_return_diff_file,index_return)
-    #
-    # return dir_return_diff_file
+
+
+def MultiFilesEvtIDMapProperty(v_evtID_specific, v_fileNo_specific,v_property_whole,
+                               v_evtIDForProperty_whole, v_fileNoForProperty_whole):
+    """
+    This function is to overcome the obstacle that many files' evtID mix together when loading multi-files
+    Use evtID descent to find file gaps
+    :param v_evtID_specific: specified evtID to slice
+    :param v_property_whole: property needed to extract, which includes the whole evtIDs dataset
+    :return:
+    """
+    import pandas as pd
+    from IPython.display import display
+
+    dict_to_df = {"fileNo":v_fileNoForProperty_whole,
+                  "evtID":v_evtIDForProperty_whole,
+                  "property":list(v_property_whole)}
+
+    df_whole = pd.DataFrame.from_dict(dict_to_df).set_index(["fileNo","evtID"]).sort_index()
+    v_multi_index = [*zip(v_fileNo_specific, v_evtID_specific)]
+    v_property_indexed = np.array(df_whole.loc[v_multi_index ]["property"])
+    # print(len(v_property_indexed), len(v_evtID_specific))
+    return v_property_indexed
+
+# Multi Branches Method
+
+def LoadOneFileUprootMultiBranch(name_file:str, v_name_branch:str, dict_list_branch_filter:dict=None, return_list:bool=True,
+                      fileNoExtracter=None):
+    """
+    This function is to overcome the weakness of repeating reading the same file
+    :param name_file:
+    :param v_name_branch: branches to load
+    :param dict_list_branch_filter: keys of dict is the name of branch, so that we can select specific tree to filter branch
+    :param return_list:
+    :param fileNoExtracter:
+    :return:
+    """
+    dict_multiBranch = {}
+    dir_event = {}
+    with up.open(name_file) as f:
+        for name_branch in v_name_branch:
+            # print(name_file, name_branch)
+            if not dict_list_branch_filter is None and name_branch in dict_list_branch_filter.keys():
+                list_branch_filter = dict_list_branch_filter[name_branch]
+            else:
+                list_branch_filter = None
+            tree = f[name_branch]
+            for i, key in enumerate(tree.keys()):
+                if (not list_branch_filter is None) and (key in list_branch_filter):
+                    continue
+                if return_list:
+                    dir_event[key] = list(np.array(tree[key]))
+                else:
+                    dir_event[key] = np.array(tree[key])
+                if fileNoExtracter!=None and i == 0:
+                    fileNo = fileNoExtracter.match(name_file).groups()[0]
+                    dir_event["LoadedFileNo"] = [fileNo]*len(dir_event[key])
+            dict_multiBranch[name_branch] = copy(dir_event)
+
+    return dict_multiBranch
+
+def LoadMultiFileUprootMultiBranch(v_files, v_name_branch, templateToExtractFileNo,*args, **kwargs):
+    import re
+    dict_multiBranch_merge = {}
+    for i, name_file in tqdm.tqdm( enumerate(v_files) ):
+        dict_multiBranch = LoadOneFileUprootMultiBranch(name_file,v_name_branch,fileNoExtracter=re.compile(templateToExtractFileNo, re.IGNORECASE),
+                                                        *args, **kwargs)
+        if i==0:
+            for name_branch in v_name_branch:
+                dict_multiBranch_merge[name_branch] = copy(dict_multiBranch[name_branch])
+        else:
+            for name_branch in v_name_branch:
+                dict_multiBranch_merge[name_branch] = MergeEventsDictionary([dict_multiBranch_merge[name_branch],
+                                                                            dict_multiBranch[name_branch]])
+    return dict_multiBranch_merge
+
+def LoadMultiFileUprootMultiBranchWildCard(template_name_file, templateToExtractFileNo:str=None,*args, **kwargs):
+    if templateToExtractFileNo is None:
+        templateToExtractFileNo = template_name_file.replace("*", "(.*)")
+        templateToExtractFileNo = "?".join(templateToExtractFileNo.split("?")).replace("?", "(.*)")
+    v_files = glob.glob(template_name_file)
+    return LoadMultiFileUprootMultiBranch(v_files, templateToExtractFileNo, *args, **kwargs)
+
+# Load Dataframe
+def LoadMultiFilesDataframe(path_file:str, dict_condition:dict=None):
+    """
+    Load multi pkl files which stores dataframe
+    :param path_file:
+    :return:
+    """
+    import pandas as pd
+    v_files = glob.glob(path_file)
+    df_whole = pd.DataFrame()
+    for file in tqdm.tqdm(v_files):
+        df = pd.read_pickle(file)
+        if not dict_condition is None:
+            index = [True]*len(df)
+            for key, values in dict_condition.items():
+                if type(values) is list:
+                    index_tmp = [False]*len(df)
+                    for value in values:
+                        index_tmp |= (df[key]==value)
+                    index &= index_tmp
+                else:
+                    index = index & (df[key]==values)
+            df = df[index]
+        df_whole = pd.concat( (df_whole, df), axis=0)
+    return df_whole.reset_index()
 
 if __name__ == "__main__":
     import time

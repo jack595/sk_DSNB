@@ -71,3 +71,7 @@ def NameToPDGID(name_ion:str, delimiter="_"):
     Z = int(periodictable_tool.MapToCharge(name_ion.split(delimiter)[0]))
     N = int(name_ion.split(delimiter)[1])
     return int(N*10+Z*1e4+1e9)
+
+def PhotonEkToWavelength(v_Ek_eV):
+    v_Ek_eV = np.array(v_Ek_eV)
+    return 1239.847/v_Ek_eV
