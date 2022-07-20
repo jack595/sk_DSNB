@@ -33,7 +33,8 @@ python /afs/ihep.ac.cn/users/l/luoxj/JUNO_G4_Simulation/optical_run/OneShotSimul
 """hep_sub  {name_job} -argu {particle} {fileNo_start} {fileNo_end} {directory} {L_LS} -wt short -m 4000 -e /dev/null -o /dev/null\n"""
 
     v_name_to_gen = ["H_2","He_4",   "Li_6", "B_10", "C_12", "N_14","O_16", "F_18", "Ne_20", "Na_22"]
-    v_L_LS = ["0.5", "1.0", "10", "5", "7"]
+    # v_L_LS = ["0.5", "1.0", "10", "5", "7"]
+    v_L_LS = ["2"]
 
     with open(name_job,"w") as f:
         f.write(job_template)
@@ -43,7 +44,7 @@ python /afs/ihep.ac.cn/users/l/luoxj/JUNO_G4_Simulation/optical_run/OneShotSimul
 
     with open(name_sub, "w") as f:
         for L_LS in v_L_LS:
-            if float(L_LS) <2:
+            if float(L_LS) <= 2:
                 fileNo_end = 3000+600
             else:
                 fileNo_end = 3000+int(900*2/float(L_LS) )

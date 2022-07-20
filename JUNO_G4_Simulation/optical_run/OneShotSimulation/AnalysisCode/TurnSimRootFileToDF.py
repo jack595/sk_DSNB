@@ -31,7 +31,7 @@ def GetPhotonParentInfo(dir_PMT, dir_LS):
         v_parentID = dir_PMT["step_ParentID"][i]
         dict_map_pdgID = dict( set( list(zip( dir_LS["step_trackID"][index_LS_evtID], dir_LS["step_pdgID"][index_LS_evtID]))) )
         dict_map_dEdx = dict( set( list(zip( dir_LS["step_trackID"][index_LS_evtID], dir_LS["step_Edep"][index_LS_evtID]/dir_LS["step_dx"][index_LS_evtID] ))) )
-        v2d_parent_pdgID.append( Replace(v_parentID, dict_map_pdgID, else_item=20022) )
+        v2d_parent_pdgID.append( Replace(v_parentID, dict_map_pdgID, else_item=-1) )
         v2d_parent_dEdx.append( Replace(v_parentID, dict_map_dEdx, else_item=0) )
     return v2d_parent_pdgID, v2d_parent_dEdx
 
@@ -43,7 +43,7 @@ def TurnSimRootFileToDF(file_template:str, fileNo_start:int, fileNo_end:int, par
     #                  "step_trackID" ]
 
     dict_to_df = {"ion":[], "time":[], "chamberID":[], "BeamX":[], "BeamZ":[], "Ek":[], "dE_quench":[],
-                  "dE/dx":[], "parentPDGID":[], "parent_dEdx":[], "theta":[], "isCherenkov":[]}
+                  "dE/dx":[], "parentPDGID":[], "parent_dEdx":[], "theta":[], "isCherenkov":[], "dE_deposit":[]}
     dict_nEvts = {}
 
     # dir_geninfo = LoadMultiROOTFilesEOS( file_template, fileNo_start, fileNo_end, name_branch="genInfo", use_multiprocess=False )
@@ -59,12 +59,26 @@ def TurnSimRootFileToDF(file_template:str, fileNo_start:int, fileNo_end:int, par
     dir_PMT_far = copy(dict_MultiBranches["PMT_log_R7600"])
     dir_LS = copy(dict_MultiBranches["GdLS_log"])
 
+    # Add appended new variables
+    # add_new_var = "step_X_GoOutLS" in list(dir_PMT_far.keys())
+    add_new_var = False
+    if add_new_var:
+        dict_to_df["XGoOutLS"] = []
+        dict_to_df["YGoOutLS"] = []
+        dict_to_df["ZGoOutLS"] = []
+        dict_to_df["t_op_start"] = []
+        dict_to_df["isReemission"] = []
+
+
     pdgID_certain,dir_dEdx = GetDirForNoOpticalAnalyze(dir_events=dir_LS, dir_geninfo=dir_geninfo, pdgID=NameToPDGID(particle),
                                                        evtIDMap=True)
 
     # Find Event Information, like beam position and dE/dx
     v_dE_quench = MultiFilesEvtIDMapProperty( dir_PMT_far["evtID"], np.array(dir_PMT_far["LoadedFileNo"],dtype=int),
                                              dir_dEdx["Equench"], dir_dEdx["evtID"], dir_dEdx["fileNo"])
+
+    v_dE_deposit = MultiFilesEvtIDMapProperty( dir_PMT_far["evtID"], np.array(dir_PMT_far["LoadedFileNo"],dtype=int),
+                                             dir_dEdx["Edep"], dir_dEdx["evtID"], dir_dEdx["fileNo"])
 
     v_dEdx = MultiFilesEvtIDMapProperty( dir_PMT_far["evtID"], np.array(dir_PMT_far["LoadedFileNo"],dtype=int),
                                               dir_dEdx["dE_dx_main_track"], dir_dEdx["evtID"], dir_dEdx["fileNo"])
@@ -76,12 +90,14 @@ def TurnSimRootFileToDF(file_template:str, fileNo_start:int, fileNo_end:int, par
     v2d_BeamX = []
     v2d_BeamZ = []
     v2d_dE_quench = []
+    v2d_dE_deposit = []
     v2d_dEdx = []
-    for BeamXYZ, v_chamberID,dE_quench, dEdx in  zip(v_BeamXYZ, dir_PMT_far["step_chamberID"],
-                                               v_dE_quench,v_dEdx):
+    for BeamXYZ, v_chamberID,dE_quench, dEdx, dE_deposit in  zip(v_BeamXYZ, dir_PMT_far["step_chamberID"],
+                                               v_dE_quench,v_dEdx, v_dE_deposit):
         v2d_BeamX.append( [BeamXYZ[0]]*len(v_chamberID))
         v2d_BeamZ.append( [BeamXYZ[2]]*len(v_chamberID))
         v2d_dE_quench.append( [dE_quench]*len(v_chamberID))
+        v2d_dE_deposit.append( [dE_deposit]*len(v_chamberID))
         v2d_dEdx.append( [dEdx]*len(v_chamberID))
 
     dict_nEvts[particle] = len(dir_geninfo["E_init"])
@@ -102,10 +118,17 @@ def TurnSimRootFileToDF(file_template:str, fileNo_start:int, fileNo_end:int, par
     dict_to_df["BeamZ"] += list( np.concatenate(v2d_BeamZ) )
     dict_to_df["Ek"] += list( v_Ek)
     dict_to_df["dE_quench"] += list( np.concatenate(v2d_dE_quench) )
+    dict_to_df["dE_deposit"] += list( np.concatenate(v2d_dE_deposit) )
     dict_to_df["dE/dx"] += list( np.concatenate(v2d_dEdx) )
     dict_to_df["parentPDGID"] += list( np.concatenate(v2d_parent_pdgID) )
     dict_to_df["parent_dEdx"] += list( np.concatenate(v2d_parent_dEdx)[index_pdgID] )
-
+    
+    if add_new_var:
+        dict_to_df["XGoOutLS"] += list( np.concatenate(dir_PMT_far["step_X_GoOutLS"])[index_pdgID] )
+        dict_to_df["YGoOutLS"] += list( np.concatenate(dir_PMT_far["step_Y_GoOutLS"])[index_pdgID] )
+        dict_to_df["ZGoOutLS"] += list( np.concatenate(dir_PMT_far["step_Z_GoOutLS"])[index_pdgID] )
+        dict_to_df["isReemission"] += list( np.concatenate(dir_PMT_far["step_isReemission"])[index_pdgID] )
+        dict_to_df["t_op_start"] += list( np.concatenate(dir_PMT_far["step_op_start_time"])[index_pdgID] )
 
     v_y = np.concatenate(dir_PMT_far["step_y"])[index_pdgID]
     v_z = np.concatenate(dir_PMT_far["step_z"])[index_pdgID]

@@ -400,15 +400,20 @@ def LoadMultiFileUprootMultiBranch(v_files, v_name_branch, templateToExtractFile
     import re
     dict_multiBranch_merge = {}
     for i, name_file in tqdm.tqdm( enumerate(v_files) ):
-        dict_multiBranch = LoadOneFileUprootMultiBranch(name_file,v_name_branch,fileNoExtracter=re.compile(templateToExtractFileNo, re.IGNORECASE),
+        try:
+            dict_multiBranch = LoadOneFileUprootMultiBranch(name_file,v_name_branch,fileNoExtracter=re.compile(templateToExtractFileNo, re.IGNORECASE),
                                                         *args, **kwargs)
-        if i==0:
-            for name_branch in v_name_branch:
-                dict_multiBranch_merge[name_branch] = copy(dict_multiBranch[name_branch])
-        else:
-            for name_branch in v_name_branch:
-                dict_multiBranch_merge[name_branch] = MergeEventsDictionary([dict_multiBranch_merge[name_branch],
-                                                                            dict_multiBranch[name_branch]])
+
+            if i==0:
+                for name_branch in v_name_branch:
+                    dict_multiBranch_merge[name_branch] = copy(dict_multiBranch[name_branch])
+            else:
+                for name_branch in v_name_branch:
+                    dict_multiBranch_merge[name_branch] = MergeEventsDictionary([dict_multiBranch_merge[name_branch],
+                                                                                dict_multiBranch[name_branch]])
+        except:
+            print(f"Error in reading {name_file}!!! Continue!")
+            continue
     return dict_multiBranch_merge
 
 def LoadMultiFileUprootMultiBranchWildCard(template_name_file, templateToExtractFileNo:str=None,*args, **kwargs):
